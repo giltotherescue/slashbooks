@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from . import queue
@@ -194,11 +194,22 @@ def _transfer_treatment(bt, connect, policy, cur):
 # "Uncategorized Stripe activity": a sale, refund or dispute the engine cannot tie to one charge and one invoice
 # with certainty. Its processor side still posts (the Stripe balance did move); the other side waits here, and
 # the entry carries a ``stripe-review`` reason for a person. The engine opens it the first time it is needed.
-# When later evidence proves the movement, a separate reclassification entry moves the amount out; the original
-# entry is never edited or deleted.
+# The engine never moves a held entry out by itself: it stays held until a person corrects it through the
+# ordinary ledger correction path (``books ledger correct``).
 STRIPE_HOLDING_ACCOUNT = 'Income:Uncategorized:Stripe'
 STRIPE_HOLDING_AUTHORITY = 'uncategorized-stripe-activity'
+# Moves written by pre-release builds of the holding account; the engine no longer writes them, but the ledger
+# correction guard still protects any that exist.
 STRIPE_RECLASSIFY_PREFIX = 'stripe-reclassify:'
+
+# What a sale movement owns, the entry metadata that records it, and the hold reason when another movement owns it.
+_OWNED_KINDS = ('charge', 'payment_intent', 'invoice')
+_OWNERSHIP_META = dict(charge='stripe-charge', payment_intent='stripe-payment-intent', invoice='stripe-invoice')
+_CLAIM_REASONS = dict(charge='charge_claimed_by_another_movement',
+                      payment_intent='payment_intent_claimed_by_another_payment',
+                      invoice='invoice_claimed_by_another_payment')
+# Authorities of non-sale entries that earlier releases wrote with an income posting.
+_NON_SALE_AUTHORITY_PREFIXES = ('transfer-rule:',)
 
 
 class _Hold(ValueError):
@@ -347,6 +358,12 @@ def _live_charge(doc):
     return doc.get('status') != 'failed' and doc.get('paid') is not False
 
 
+def _is_document(doc):
+    """A copy of a provider object: an ID and at least one field. An expansion with only its ID (``{'id': ...}``)
+    is a reference, never the document; it cannot stand in for an object the evidence does not hold."""
+    return isinstance(doc, dict) and bool(_ref_id(doc.get('id'))) and any(key not in ('id', 'object') for key in doc)
+
+
 class _Index:
     """Every relationship in one evidence envelope, by the ID it names, built once per plan.
 
@@ -363,7 +380,7 @@ class _Index:
         seen = set()
 
         def copy(kind, doc):
-            if isinstance(doc, dict) and _ref_id(doc.get('id')) and (kind, id(doc)) not in seen:
+            if _is_document(doc) and (kind, id(doc)) not in seen:
                 seen.add((kind, id(doc)))
                 self.copies[kind].setdefault(doc['id'], []).append(doc)
                 return True
@@ -443,6 +460,7 @@ class _Closure:
         self.sessions, self.payments, self.invoice_refs, self.invoice_docs = [], [], [], []
         self.backlink_intents, self.named_charges, self.claimants, self.followers = set(), set(), [], []
         self.rivals = []  # Other live charges for the same payment intent.
+        self.intent_ids, self.invoice_ids = set(), set()  # Every payment intent and invoice the closure names.
 
 
 class _Resolver:
@@ -456,11 +474,11 @@ class _Resolver:
 
     ``trace`` (a list) collects every provider document the closure used; ``lookups`` the movement IDs it looked
     up with what it found (or None), so a receipt binds exactly what decided a posting. ``links`` maps each
-    movement to its charge, its sale movement and its invoice. ``ledger_claims`` maps an invoice ID to the sale
-    movements whose live ledger entries already claim it.
+    movement to its charge, its sale movement and its invoice; ``closures`` each charge's closure. Ownership
+    across cohorts (the ledger) is decided by the plan, after every movement is resolved.
     """
 
-    def __init__(self, policy, bts, objects, trace=None, ledger_claims=None):
+    def __init__(self, policy, bts, objects, trace=None):
         self.policy, self.mode, self.cur = policy, policy['livemode'], policy['currency'].lower()
         self.bts = bts
         self.charges, self.refunds, self.invoices = objects['charges'], objects['refunds'], objects['invoices']
@@ -469,8 +487,7 @@ class _Resolver:
         if objects.get('_index') is None:
             objects['_index'] = _Index(bts, objects)  # One index per plan, shared by every resolver.
         self.index = objects['_index']
-        self.trace, self.lookups, self.competing, self.links = trace, {}, set(), {}
-        self.ledger_claims = ledger_claims or {}
+        self.trace, self.lookups, self.competing, self.links, self.closures = trace, {}, set(), {}, {}
 
     def use(self, *docs):
         if self.trace is not None:
@@ -506,7 +523,7 @@ class _Resolver:
         if identity is None:
             return None
         index, found = self.index, _Closure(identity)
-        found.charge_docs = self.unique([ref for ref in refs if isinstance(ref, dict)] + index.copies['charge'].get(identity, []))
+        found.charge_docs = self.unique([ref for ref in refs if _is_document(ref)] + index.copies['charge'].get(identity, []))
         # A refund or dispute of this charge that names a payment intent or expands the charge adds evidence.
         found.followers = self.unique(list(followers) + [doc for kind in ('refund', 'dispute')
                                                          for doc in index.named('charge', identity, kind)
@@ -530,8 +547,9 @@ class _Resolver:
                                   + [{'id': doc['id']} for doc in backlinks])
             invoices = {_ref_id(ref) for ref in found.invoice_refs} - {None}
             intents |= {_ref_id((doc.get('payment') or {}).get('payment_intent')) for doc in found.payments} - {None}
-        found.intent_docs = self.unique([ref for ref in found.intent_refs if isinstance(ref, dict) and len(ref) > 1]
+        found.intent_docs = self.unique([ref for ref in found.intent_refs if _is_document(ref)]
                                         + [doc for intent in sorted(intents) for doc in index.copies['intent'].get(intent, [])])
+        found.intent_ids, found.invoice_ids = set(intents), set(invoices)
         found.invoice_docs = self.unique([doc for invoice in sorted(invoices) for doc in index.copies['invoice'].get(invoice, [])])
         for doc in found.invoice_docs:
             if _ref_id(doc.get('charge')):
@@ -564,6 +582,7 @@ class _Resolver:
         if found is None:
             return None, None, None
         identity = found.charge_id
+        self.closures[identity] = found
         sales = sorted(self.index.sales.get(identity, []))
         if len(sales) > 1:
             self.competing.add(tuple(sales))
@@ -600,6 +619,10 @@ class _Resolver:
         for row in found.sessions:
             self.check_mode(row)
             self.check_currency(row, 'checkout_session')
+            # An expired, open or unpaid session says this payment did not complete through it: it never links
+            # the payment to an invoice or lines (a paid invoice does not say which charge paid it).
+            if row.get('payment_status') not in (None, 'paid') or row.get('status') not in (None, 'complete'):
+                raise _Hold('checkout_session_not_paid')
         for row in found.payments:
             self.check_mode(row)
             self.check_currency(row, 'invoice_payment')
@@ -622,13 +645,14 @@ class _Resolver:
             self.check_currency(invoice, 'invoice')
             if found.named_charges - {identity} or found.backlink_intents - {intent_id}:
                 raise _Hold('invoice_reference_conflict')
-            if found.claimants or found.rivals or (self.ledger_claims.get(invoice_id, set()) - {sale_bt}):
+            if found.claimants or found.rivals:
                 raise _Hold('invoice_claimed_by_another_payment')
             return invoice, True, intent, invoice_id
         if found.named_charges - {identity} or found.rivals:
             raise _Hold('payment_intent_reference_conflict')
-        if _ref_id(charge.get('payment_intent')) and not found.intent_docs and not found.payments and not found.sessions:
-            # A named payment intent that the evidence does not hold is no proof of a sale without an invoice.
+        if intent_id and not found.intent_docs and not found.payments and not found.sessions:
+            # A payment intent that any copy in the closure names (the charge, a refund, a dispute) but the
+            # evidence does not hold is no proof of a sale without an invoice. An ID-only expansion is not the document.
             raise _Hold('missing_payment_intent_evidence')
         if not found.sessions:
             return None, False, intent, None
@@ -653,17 +677,14 @@ class _Resolver:
         return dict(status='paid', amount_paid=gross, amount_due=gross, total=gross,
                     lines=dict(has_more=False, data=converted)), True, intent, None
 
-    def line_price(self, line):
-        """``(price_id, product_id, price view, product view)`` for one line, from every reference to them.
-
-        The line's price, its pricing details, its ``price_id``/``product_id``, the captured price and every
-        expanded or captured product copy must name the same objects; a contradiction holds the sale.
-        """
+    @staticmethod
+    def price_views(line):
+        """Every copy or reference of one line's price: the line's price, its pricing details, its ``price_id``."""
         raw = line.get('price')
         details = (line.get('pricing') or {}).get('price_details')
         views = []
         if isinstance(raw, dict):
-            views.append({**raw, 'id': raw.get('id') or raw.get('price')})
+            views.append(raw if raw.get('id') or not raw.get('price') else {**raw, 'id': raw['price']})
         elif isinstance(raw, str) and raw:
             views.append({'id': raw})
         if isinstance(details, dict):
@@ -680,24 +701,68 @@ class _Resolver:
         ids = {view.get('id') for view in views if view.get('id') is not None}
         if len(ids) > 1 or any(not isinstance(value, str) or not value for value in ids):
             raise _Hold('price_reference_conflict')
-        price_id = next(iter(ids), None)
-        if price_id is not None and self.prices.get(price_id) is not None:
-            self.use(self.prices[price_id])
-            views.append(self.prices[price_id])
-        try:
-            price = _combine(views, 'price', _PRICE_FIELDS) if views else {}
-        except _Hold:
-            raise _Hold('price_reference_conflict') from None
-        if price.get('currency') not in (None, self.cur):
-            raise _Hold('price_currency_conflict')
-        # Every product reference and copy: each price copy's product (expanded or not), the pricing details,
-        # the line's product_id and the captured product.
-        products = [view.get('product') for view in views if view.get('product')]
-        if line.get('product_id'):
-            products.append(line['product_id'])
-        product_id, product_docs = self.docs(products, self.products, 'product')
-        product = _combine(product_docs, 'product', _PRODUCT_FIELDS) if product_docs else {}
-        return price_id, product_id, price, product
+        return next(iter(ids), None), views
+
+    @staticmethod
+    def line_evidence(line):
+        """The provider objects (not ID-only references) a line's price views come from."""
+        details = (line.get('pricing') or {}).get('price_details')
+        return [doc for doc in (line.get('price'), details.get('price') if isinstance(details, dict) else None)
+                if _is_document(doc)]
+
+    def catalog_copy(self, doc, label):
+        """A price or product copy used for identity or account selection must be in the policy's mode and currency."""
+        if isinstance(doc, dict):
+            self.check_mode(doc)
+            self.check_currency(doc, label)
+
+    def catalog(self, lines):
+        """``[(price_id, product_id, price view, product view)]`` for every line.
+
+        Every copy of one price or product, on any line of the document and in the captured catalog, is merged
+        by ID before any rule is chosen: two lines never see different copies of one object, and copies that
+        disagree hold the sale. Each copy must be in the policy's mode and currency.
+        """
+        per_line, price_copies = [], {}
+        evidence = [doc for line in lines for doc in self.line_evidence(line)] + list(self.prices.values())
+        for line in lines:
+            price_id, views = self.price_views(line)
+            per_line.append((line, price_id, views))
+            if price_id is not None:
+                price_copies.setdefault(price_id, []).extend(views)
+        for price_id, views in price_copies.items():
+            if self.prices.get(price_id) is not None:
+                views.append(self.prices[price_id])
+        resolved, product_refs = [], {}
+        for line, price_id, views in per_line:
+            views = price_copies[price_id] if price_id is not None else views
+            for view in views:
+                self.catalog_copy(view, 'price')
+            # Every provider copy the views came from binds the receipt (synthesized ID-only views do not).
+            self.use(*(view for view in views if any(view is doc for doc in evidence)))
+            try:
+                price = _combine(views, 'price', _PRICE_FIELDS) if views else {}
+            except _Hold:
+                raise _Hold('price_reference_conflict') from None
+            if price.get('currency') not in (None, self.cur):
+                raise _Hold('price_currency_conflict')
+            # Every product reference and copy: each price copy's product (expanded or not), the pricing details,
+            # the line's product_id and the captured product.
+            products = [view.get('product') for view in views if view.get('product')]
+            if line.get('product_id'):
+                products.append(line['product_id'])
+            product_id, _ = _docs(products, {}, 'product')
+            if product_id is not None:
+                product_refs.setdefault(product_id, []).extend(ref for ref in products if isinstance(ref, dict))
+            resolved.append((price_id, product_id, price))
+        products = {}
+        for product_id, refs in product_refs.items():
+            docs = self.unique(refs + ([self.products[product_id]] if self.products.get(product_id) is not None else []))
+            for doc in docs:
+                self.catalog_copy(doc, 'product')
+            self.use(*docs)
+            products[product_id] = _combine(docs, 'product', _PRODUCT_FIELDS) if docs else {}
+        return [(price_id, product_id, price, products.get(product_id, {})) for price_id, product_id, price in resolved]
 
     def allocations(self, charge, found, gross, sale_bt, link):
         policy, cur = self.policy, self.cur
@@ -729,7 +794,7 @@ class _Resolver:
             parent = line.get('parent') or {}
             if line.get('proration') or any((parent.get(key) or {}).get('proration') for key in ('invoice_item_details', 'subscription_item_details')):
                 raise ValueError('proration_requires_review')
-            price_id, product_id, price, product = self.line_price(line)
+        for line, (price_id, product_id, price, product) in zip(lines['data'], self.catalog(lines['data'])):
             rule = _rule(policy, price_id, product_id,
                          {**context, 'invoice': invoice, 'invoice_line': line, 'price': price, 'product': product})
             allocations.append((rule['category'], _minor(line['amount']), rule['id']))
@@ -739,7 +804,11 @@ class _Resolver:
 
     def sale(self, bt):
         link = self.links.setdefault(bt['id'], {'charge': _ref_id(bt.get('source')), 'sale': bt['id']})
-        charge, found, _ = self.charge([bt.get('source')])
+        try:
+            charge, found, _ = self.charge([bt.get('source')])
+        finally:
+            # What this sale owns comes from its own closure, even when the closure holds it.
+            link['closure'] = self.closures.get(link['charge'])
         if charge is None:
             raise _Hold('missing_charge_evidence')
         if _ref_id(charge.get('balance_transaction')) != bt['id']:
@@ -780,7 +849,7 @@ class _Resolver:
         charge, found, gross = self.follow(bt, docs, 'refund', 'missing_refund_charge_evidence')
         link = self.links[bt['id']]
         # A refund follows its sale: the same closure (with the refund's own copies), then the sale's treatment.
-        invoice, has_invoice, _, _ = self.document(charge, found, gross, link['sale'])
+        invoice, has_invoice, _, link['invoice'] = self.document(charge, found, gross, link['sale'])
         if link['sale'] is None:
             raise _Hold('sale_movement_unverified')
         if has_invoice and (not invoice or not isinstance(invoice.get('lines'), dict)
@@ -1082,7 +1151,7 @@ def _bank_action(match, payout, net, pending, posted, owned, opens, entity, cuto
                 dict(account=transit, amount=_amount(net), currency=book)], normalized_source=dict(bank))
 
 
-def _source_capture_digest(bt, objects, policy=None):
+def _source_capture_digest(bt, objects, policy=None, changed_movement=None):
     """Bind this movement's authority graph without unrelated captured objects.
 
     Expanded and separately captured references resolve through the same rules
@@ -1092,6 +1161,10 @@ def _source_capture_digest(bt, objects, policy=None):
     With *policy*, the resolver runs once more and records every document it reads and every group of
     competing sale movements. When the projection below already binds each of those documents (the usual
     case), the digest is unchanged from earlier releases; otherwise the full resolved graph is bound too.
+
+    A refund or dispute follows its sale movement. ``changed_movement(id)`` says whether a movement differs from
+    the financial identity the company already recorded (staged or posted); when the linked sale's does, its
+    current financial identity is bound too, so a receipt never matches after the sale it followed changed.
     """
     captured = {'movement': {**_financial(bt, '', False), 'status': bt.get('status')}, 'objects': {}}
     covered = set()  # id() of each document whose fields the projection binds.
@@ -1106,19 +1179,33 @@ def _source_capture_digest(bt, objects, policy=None):
                     value[key] = _object_id(value[key])
         return value
 
+    def cover(value, top=True):
+        # A whole projection binds every nested object except the references it reduces to an ID.
+        if isinstance(value, dict):
+            covered.add(id(value))
+            for key, item in value.items():
+                if not (top and key in ('invoice', 'payment_intent', 'balance_transaction', 'charge', 'product')):
+                    cover(item, False)
+        elif isinstance(value, list):
+            for item in value:
+                cover(item, False)
+
     def remember(kind, ref, fields=None):
         identity = _object_id(ref)
         doc = ref if isinstance(ref, dict) else objects[kind].get(identity)
         captured['objects'][kind + ':' + str(identity)] = project(doc, fields)
         if isinstance(doc, dict):
             covered.add(id(doc))
+            if fields is None:
+                cover(doc)
         return doc or {}
 
     def lines(document, field):
         for line in (document.get(field) or {}).get('data', []):
             raw = line.get('price') or (line.get('pricing') or {}).get('price_details') or {}
-            identity = raw if isinstance(raw, str) else raw.get('id') or raw.get('price')
-            price = remember('prices', objects['prices'].get(identity) or raw)
+            # The price a line names: a string, an expanded price, or pricing details whose price is either.
+            identity = raw if isinstance(raw, str) else raw.get('id') or _object_id(raw.get('price'))
+            price = remember('prices', (objects['prices'].get(identity) if isinstance(identity, str) else None) or raw)
             product_id = _object_id(price.get('product'))
             if product_id:
                 remember('products', product_id)
@@ -1143,6 +1230,8 @@ def _source_capture_digest(bt, objects, policy=None):
             if isinstance(doc, dict) and doc is not primary and not redundant(doc, primary, fields):
                 value = project(doc, fields)
                 captured['objects'][f'copy:{kind}:{_object_id(doc)}:{_digest(value)}'] = value
+                if fields is None:
+                    cover(doc)
             if isinstance(doc, dict):
                 covered.add(id(doc))
 
@@ -1236,7 +1325,16 @@ def _source_capture_digest(bt, objects, policy=None):
                           if not (linked is not None and source == charge and sales in ((), (linked,)))), key=json.dumps)
         if any(id(doc) not in covered for doc in trace) or lookups:
             captured['resolved'] = dict(objects=sorted({_digest(doc) for doc in trace}), lookups=lookups)
+        sale = (resolver.links.get(bt['id']) or {}).get('sale') if kind not in _SALE_KINDS else None
+        linked = objects['balanceTransactions'].get(sale) if sale else None
+        if linked is not None and changed_movement is not None and changed_movement(sale):
+            captured['sale_movement'] = dict(financial=_financial(linked, '', False), status=linked.get('status'))
     return _digest(captured)
+
+
+def _unavailable_fingerprint(sid):
+    """The capture digest recorded when a movement's evidence cannot be fingerprinted. It is never evidence."""
+    return _digest({'invalid_source': sid})
 
 
 def _holding_opens(entity, policy, plan):
@@ -1249,6 +1347,99 @@ def _holding_opens(entity, policy, plan):
     if STRIPE_HOLDING_ACCOUNT in opens:
         return []
     return [Open(opens[policy['clearing_account']].date, STRIPE_HOLDING_ACCOUNT, (entity.currency,))]
+
+
+class _LedgerOwnership:
+    """What each Stripe sale movement in the ledger owns, following corrections.
+
+    ``records`` maps a sale movement ID to what its entry recorded (``charge``, ``payment_intent`` and
+    ``invoice`` IDs), the ``live`` entry that carries it forward (itself or a correction, followed to the end),
+    whether that entry is ``held`` in the holding account, whether an earlier release wrote it (``legacy``) and
+    whether its lineage is ``ambiguous``. ``owners`` maps ``(kind, ID)`` to the sale movements that own it.
+
+    A true reversal (no live correction) releases what a sale owned. A correction keeps it, whatever its postings
+    say; a correction filed under another spelling of its predecessor's ID is ambiguous and counts as live.
+    A sale written by an earlier release records no ownership. Missing metadata never means unowned: its charge
+    is derived only when the captured balance transaction matches the saved financial digest (``unknown`` lists
+    the ones that do not), and the payment intents and invoices it owned are never known.
+    """
+
+    def __init__(self, entries, reversed_ids, saved, bts, prefix, mode):
+        self.entries, self.reversed_ids = entries, reversed_ids
+        self.successors = {}
+        for entry in entries.values():
+            parent = dict(entry.meta).get('correction-of')
+            if parent:
+                self.successors.setdefault(parent, []).append(entry)
+        self.records, self.owners, self.legacy, self.unknown = {}, {}, False, set()
+        self.refunded = {}  # charge -> gross of every live refund or dispute entry that follows it, held or not
+        account = prefix[len('stripe:'):-1]
+        for source, root in sorted(entries.items()):
+            meta = dict(root.meta)
+            if source.startswith(prefix) and meta.get('stripe-refund-of'):
+                found = self.live(source)
+                if found is not None:
+                    gross = sum((p.amount for p in found[0].postings if p.account.startswith('Income:') and p.amount > 0),
+                                Decimal(0))
+                    self.refunded[meta['stripe-refund-of']] = self.refunded.get(meta['stripe-refund-of'], Decimal(0)) + gross
+                continue
+            if not source.startswith(prefix) or meta.get('stripe-reclassifies'):
+                continue
+            found = self.live(source)
+            if found is None:
+                continue  # Reversed with no live correction: it owns nothing any more.
+            txn = source[len(prefix):]
+            if _OWNERSHIP_META['charge'] in meta:
+                record = dict(charge=meta['stripe-charge'], legacy=False, **{
+                    kind: set(meta.get(_OWNERSHIP_META[kind], '').split()) for kind in ('payment_intent', 'invoice')})
+            elif (any(p.account.startswith('Income:') and p.amount < 0 for p in root.postings)
+                  and not any(p.account == STRIPE_HOLDING_ACCOUNT for p in root.postings)
+                  and not str(meta.get('stripe-authority', '')).startswith(_NON_SALE_AUTHORITY_PREFIXES)):
+                # A sale an earlier release posted (it credits revenue and records no ownership).
+                bt = bts.get(txn)
+                proven = (bt is not None and bt.get('type') in _SALE_KINDS and _ref_id(bt.get('source')) is not None
+                          and (saved.get(source) or {}).get('stripe_financial_digest') == _digest(_financial(bt, account, mode)))
+                record = dict(charge=_ref_id(bt['source']) if proven else None, payment_intent=None, invoice=None, legacy=True)
+                self.legacy = True
+                if not proven:
+                    self.unknown.add(txn)
+            else:
+                continue
+            live, ambiguous = found
+            record.update(live=live, ambiguous=ambiguous,
+                          held=any(p.account == STRIPE_HOLDING_ACCOUNT for p in live.postings))
+            self.records[txn] = record
+            for kind in _OWNED_KINDS:
+                values = {record['charge']} - {None} if kind == 'charge' else record[kind] or set()
+                for value in values:
+                    self.owners.setdefault((kind, value), set()).add(txn)
+
+    def live(self, source, seen=frozenset()):
+        """``(live entry, ambiguous)`` carrying *source* forward, or None after a true reversal."""
+        spellings = source_id_variants(source)
+        if spellings & seen:
+            return None
+        entry = next((self.entries[value] for value in sorted(spellings) if value in self.entries), None)
+        if entry is not None and not spellings & self.reversed_ids:
+            return entry, False
+        for value in sorted(spellings):
+            for successor in self.successors.get(value, []):
+                if source_id_variants(successor.source_id) & spellings:
+                    return successor, True
+                found = self.live(successor.source_id, seen | spellings)
+                if found is not None:
+                    return found
+        return None
+
+    def conflict(self, movement, ids):
+        """The hold reason when another live sale owns a charge, payment intent or invoice in *ids*, or when a sale
+        an earlier release posted could own one of them; None when every one is proven unowned."""
+        for kind in _OWNED_KINDS:
+            if any(self.owners.get((kind, value), set()) - {movement} for value in sorted(ids[kind])):
+                return _CLAIM_REASONS[kind]
+        if self.unknown - {movement} or (self.legacy and (ids['payment_intent'] or ids['invoice'])):
+            return 'ownership_unproven'
+        return None
 
 
 def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=None,
@@ -1317,7 +1508,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             raise ValueError('A payout and bank source can each be matched only once.')
         by_payout[po] = match; claimed.add(sid)
     result = dict(actions=[], no_effect=[], normalized_sources=[], unresolved=[], skipped=[], uncategorized=[],
-                  reclassified=[], reclassification_blocked=[], entry_links={}, next_cursor=None,
+                  entry_links={}, next_cursor=None,
                   source_capture_digests={},
                   policy_digest=_digest(policy), evidence_digest=_digest(evidence), ledger_digest=store.content_digest())
     objects = dict(charges=charges, refunds=refunds, invoices=invoices, payouts=payouts, prices=prices,
@@ -1327,8 +1518,6 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
     all_ids = sorted(sid for sid in validated if sid > after_source_id)
     selected = all_ids[:limit]
     result['next_cursor'] = selected[-1] if len(all_ids) > limit else None
-    in_batch = set(selected)
-    reclassifications = {}
     from .accrual.store import load_record
     from .accrual.items import _find_live_entry
     claims = {}
@@ -1346,182 +1535,152 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         return bool(previous) and (previous.get('stripe_financial_digest') != normalized['stripe_financial_digest']
                                    or not _same_source(previous, normalized))
 
-    def settled(sid):
-        """Whether the batch treats *sid* as an unchanged posted source: it passes every source check."""
-        return (sid in in_batch and sid in posted and not claim_of(sid) and sid not in reversed_ids and not changed(sid)
-                and not (saved.get(sid) or {}).get('stripe_no_effect_capture_digest'))
-
-    def held_entry(source):
-        entry = entries.get(source)
-        return (entry is not None and source in posted and source not in reversed_ids
-                and dict(entry.meta).get('stripe-authority') == STRIPE_HOLDING_AUTHORITY)
-
-    def reclassify_id(source):
-        return STRIPE_RECLASSIFY_PREFIX + source[len('stripe:'):]
-
-    def moved_live(source):
-        moved = reclassify_id(source)
-        return moved in posted and moved not in reversed_ids
-
-    # Durable links, from live ledger entries this engine wrote: which sale movement claims each invoice, and
-    # which sale movements were posted for each charge. A claim is written in the same transaction as its entry.
     prefix = f"stripe:{account}:"
-    ledger_claims, ledger_sales = {}, {}
-    for source, entry in entries.items():
-        if source not in posted or source in reversed_ids:
-            continue
-        meta = dict(entry.meta)
-        target = meta.get('stripe-reclassifies') or source
-        if meta.get('stripe-invoice') and target.startswith(prefix):
-            ledger_claims.setdefault(meta['stripe-invoice'], set()).add(target[len(prefix):])
-        if meta.get('stripe-charge') and source.startswith(prefix):
-            ledger_sales.setdefault(meta['stripe-charge'], set()).add(source)
-    resolver = _Resolver(policy, bts, objects, ledger_claims=ledger_claims)
+    ownership = _LedgerOwnership(entries, reversed_ids, saved, bts, prefix, mode)
+    resolver = _Resolver(policy, bts, objects)
 
-    def reclassification(source):
-        """One entry that moves a held sale or refund out of the holding account once the evidence proves it.
-
-        The original entry is never changed. The new entry has its own source ID, derived from the balance
-        transaction, so it can post only once; ``None`` when nothing can move yet.
-        """
-        if source in reclassifications:
-            return reclassifications[source]
-        reclassifications[source] = None
-        if source not in validated or not settled(source):
-            return None  # Only a source the batch accepts as posted and unchanged can move.
-        bt, normalized = validated[source]
-        moved = reclassify_id(source)
-        if (not held_entry(source) or source in pending or moved in posted or not policy['enabled']
-                or bt.get('type') not in _SALE_KINDS | _REFUND_KINDS or bt['currency'] != cur):
-            return None
-        entry = entries[source]
-        expected = {(account_name, Decimal(_amount(amount)), book) for account_name, amount in resolver.holding(bt) if amount}
-        if {(p.account, p.amount, p.currency) for p in entry.postings} != expected:
-            return None  # The held entry is not the engine's holding entry for this movement; a person decides.
-        try:
-            postings, authority, review = resolver.place(bt)
-        except (ValueError, KeyError, TypeError, ArithmeticError):
-            return None
-        if review:
-            return None
-        # The evidence proves the movement. The move still needs the authority a fresh posting needs: no open
-        # review item, no per-account accrual treatment, and net and gross within the ask-first limit. A blocked
-        # move is reported (``reclassification_blocked``) and the entry stays in the holding account.
-        gross = {**normalized, 'amount': _amount(bt['amount'])}
-        blocked = ('existing_review' if source in owned else
-                   'accrual_treatment_required' if needs_treatment(normalized) or needs_treatment(gross) else
-                   'above_ask_first_amount' if queue.txn_is_above_ask_first(entity, normalized)
-                   or queue.txn_is_above_ask_first(entity, gross) else None)
-        if blocked:
-            result['reclassification_blocked'].append(dict(source_id=source, reason=blocked))
-            return None
-        lines = [(STRIPE_HOLDING_ACCOUNT, bt['amount'])] + [
-            (name, amount) for name, amount in postings if name not in {policy['clearing_account'], policy['fee_account']}]
-        when = entry.date if not cutoff or entry.date > cutoff else cutoff + timedelta(days=1)
-        docs = [dict(account=name, amount=_amount(amount), currency=book) for name, amount in lines if amount]
-        if sum(amount for _, amount in lines) != 0 or any(
-                name not in opens or opens[name].date > when or (opens[name].currencies and book not in opens[name].currencies)
-                for name in {doc['account'] for doc in docs}):
-            return None
-        action = dict(source_id=moved, kind='reclassification', reclassifies=source, authority_id=','.join(authority),
-                      cleared_review_reason=dict(entry.meta).get('stripe-review'), date=when.isoformat(),
-                      description=f'Reclassify {entry.narration} from uncategorized Stripe activity', postings=docs)
-        action['source_digest'] = _digest({key: action[key] for key in ('source_id', 'reclassifies', 'date', 'postings')})
-        reclassifications[source] = action
-        return action
     def to_holding(action, reason):
-        """A fresh posting goes to the holding account instead; a move is withdrawn."""
-        source = action.get('reclassifies') or action['source_id']
-        if action['kind'] == 'reclassification':
-            result['actions'].remove(action)
-            result['reclassified'] = [row for row in result['reclassified'] if row['reclassification_id'] != action['source_id']]
-            return
-        bt = validated[source][0]
+        """A fresh posting goes to the holding account instead, with its reason."""
+        bt = validated[action['source_id']][0]
         action.update(postings=[dict(account=name, amount=_amount(amount), currency=book)
                                 for name, amount in resolver.holding(bt) if amount],
                       authority_id=STRIPE_HOLDING_AUTHORITY, review_reason=reason)
-        result['uncategorized'] = [row for row in result['uncategorized'] if row['source_id'] != source]
-        result['uncategorized'].append(dict(source_id=source, reason=reason))
+        result['uncategorized'] = [row for row in result['uncategorized'] if row['source_id'] != action['source_id']]
+        result['uncategorized'].append(dict(source_id=action['source_id'], reason=reason))
 
-    def claim_invoices():
-        """An invoice belongs to one charge in the batch too: every sale posting or move that would claim an
-        invoice that another one in this batch also claims goes to the holding account instead."""
-        claimants = {}
-        for action in result['actions']:
-            source = action.get('reclassifies') or action['source_id']
-            if source not in validated or action.get('review_reason') or validated[source][0].get('type') not in _SALE_KINDS:
+    def to_unresolved(action, reason):
+        """A known movement whose allocation is not proven stays unposted."""
+        result['actions'].remove(action)
+        result['uncategorized'] = [row for row in result['uncategorized'] if row['source_id'] != action['source_id']]
+        result['unresolved'].append(dict(source_id=action['source_id'], reason=reason))
+
+    def movement(action):
+        """The balance transaction of a fresh sale, refund or dispute action; None for anything else."""
+        if action is None or action['source_id'] not in validated:
+            return None
+        bt = validated[action['source_id']][0]
+        return bt if action['kind'] == bt.get('type') and _identity_movement(bt) else None
+
+    def owned_ids(bt):
+        """``{kind: ids}`` that a sale movement owns: its charge, and every payment intent and invoice its closure names."""
+        charge = _ref_id(bt.get('source'))
+        found = (resolver.links.get(bt['id']) or {}).get('closure')
+        return dict(charge={charge} if charge else set(), payment_intent=set(found.intent_ids) if found else set(),
+                    invoice=set(found.invoice_ids) if found else set())
+
+    def claim_sales():
+        """A charge, payment intent or invoice belongs to one sale movement, across every cohort.
+
+        A sale that would post as revenue goes to the holding account when a live ledger entry (following
+        corrections) or another sale in this batch already owns what it owns, or when a sale posted by an
+        earlier release could own it and that cannot be disproved.
+        """
+        sales = [(action, bt) for action in result['actions'] for bt in [movement(action)]
+                 if bt is not None and bt.get('type') in _SALE_KINDS]
+        owned = {action['source_id']: owned_ids(bt) for action, bt in sales}
+        for action, bt in sales:
+            if action.get('review_reason'):
                 continue
-            invoice = (resolver.links.get(validated[source][0]['id']) or {}).get('invoice')
-            if invoice:
-                claimants.setdefault(invoice, []).append(action)
-        for invoice, actions in sorted(claimants.items()):
-            if len(actions) > 1:
-                for action in actions:
-                    to_holding(action, 'invoice_claimed_by_another_payment')
+            ids = owned[action['source_id']]
+            reason = ownership.conflict(bt['id'], ids)
+            for other, _ in sales:
+                shared = [kind for kind in _OWNED_KINDS if other is not action and ids[kind] & owned[other['source_id']][kind]]
+                if reason is None and shared:
+                    reason = _CLAIM_REASONS[shared[0]]
+            if reason:
+                to_holding(action, reason)
 
-    def sale_release(bt, move):
-        """``None`` when the sale a refund or dispute follows is out of the holding account, else the reason.
+    def sale_evidence(bt):
+        """``(None, None)`` when the ledger proves the sale a refund follows; else ``('hold' or 'unresolved', reason)``.
 
-        Proof comes from the ledger (a live sale entry outside the holding account, or a live move of it) or
-        from this batch's final actions (an accepted move, or a fresh sale posted to revenue). A sale movement ID
-        that the ledger does not know, or that differs from the one recorded for the charge, proves nothing.
+        Positive evidence only: a live (following corrections), non-holding sale posting of exactly the refund's
+        charge whose recorded charge (and invoice, when recorded) match the refund's closure, with one booked
+        revenue line that covers the refund. A sale this batch posts as revenue counts too: it is written in the
+        same transaction, and its links and postings are checked the same way. Anything else (a held, refused,
+        reversed or absent sale, a payout, another charge, missing metadata) is not proof.
         """
         link = resolver.links.get(bt['id']) or {}
-        linked, charge_id = link.get('sale'), link.get('charge')
-        if not linked:
-            return 'sale_movement_unverified'
-        sale = prefix + linked
-        if move:
-            recorded = dict(entries[prefix + bt['id']].meta).get('stripe-sale')
-            if recorded is not None and recorded != linked:
-                return 'sale_movement_unverified'
-        if charge_id and ledger_sales.get(charge_id, set()) - {sale}:
-            return 'sale_movement_unverified'
-        final = {row['source_id'] for row in result['actions']}
-        if sale in posted and entries.get(sale) is not None:
-            meta = dict(entries[sale].meta)
-            if sale in reversed_ids or meta.get('stripe-charge') not in (None, charge_id):
-                return 'sale_movement_unverified'
-            if (meta.get('stripe-authority') == STRIPE_HOLDING_AUTHORITY and not moved_live(sale)
-                    and reclassify_id(sale) not in final):
-                return 'sale_in_holding'
-            return None
-        fresh = next((row for row in result['actions'] if row['source_id'] == sale), None)
-        if fresh is not None:
-            return 'sale_in_holding' if fresh.get('review_reason') else None
-        # Neither in the ledger nor posted in this batch (an earlier cutover, or a later page): a new refund
-        # posts as before, but a held refund needs proof before it moves.
-        return 'sale_movement_unverified' if move else None
+        charge, sale, invoice = link.get('charge'), link.get('sale'), link.get('invoice')
+        if not charge or not sale:
+            return 'hold', 'sale_movement_unverified'
+        record = ownership.records.get(sale)
+        if record is not None:
+            if record['ambiguous']:
+                return 'hold', 'sale_movement_unverified'
+            if record['legacy']:
+                # An earlier release recorded neither the sale's ownership nor its refunds: nothing proves the
+                # refund's allocation against it.
+                return 'hold', 'ownership_unproven'
+            if record['charge'] != charge:
+                return 'hold', 'sale_movement_unverified'
+            if record['held']:
+                return 'hold', 'sale_in_holding'
+            if record['invoice'] != ({invoice} if invoice else set()):
+                return 'hold', 'sale_invoice_unverified'
+            postings = [(p.account, p.amount) for p in record['live'].postings]
+        else:
+            action = next((row for row in result['actions'] if row['source_id'] == prefix + sale), None)
+            sale_bt = movement(action)
+            if sale_bt is None or sale_bt.get('type') not in _SALE_KINDS:
+                refused = any(row['source_id'] == prefix + sale for row in result['unresolved'])
+                return 'hold', 'sale_not_posted' if refused else 'sale_movement_unverified'
+            if action.get('review_reason'):
+                return 'hold', 'sale_in_holding'
+            if _ref_id(sale_bt.get('source')) != charge or (resolver.links.get(sale) or {}).get('invoice') != invoice:
+                return 'hold', 'sale_movement_unverified'
+            postings = [(row['account'], Decimal(row['amount'])) for row in action['postings']]
+        if ownership.owners.get(('charge', charge), set()) - {sale}:
+            return 'hold', 'sale_movement_unverified'
+        if invoice and ownership.owners.get(('invoice', invoice), set()) - {sale}:
+            return 'hold', 'invoice_claimed_by_another_payment'
+        if any(name == STRIPE_HOLDING_ACCOUNT for name, _ in postings):
+            return 'hold', 'sale_in_holding'
+        revenue = [amount for name, amount in postings if name.startswith('Income:') and amount < 0]
+        if len(revenue) != 1:
+            return 'unresolved', 'mixed_line_refund_requires_allocation'
+        # Every refund or dispute of the charge counts against the booked line: those the ledger holds (held or
+        # not) and every other one in this batch.
+        others = sum((Decimal(_amount(-other['amount'])) for other in batch_followers.get(charge, []) if other is not bt),
+                     Decimal(0))
+        if ownership.refunded.get(charge, Decimal(0)) + others + Decimal(_amount(-bt['amount'])) > -revenue[0]:
+            return 'unresolved', 'refund_exceeds_booked_sale'
+        return None, None
 
-    def release_refunds():
-        """A refund leaves the holding account (or skips it) only behind its sale, judged on the final batch."""
+    batch_followers = {}  # charge -> every refund and dispute movement this batch would post (decided together)
+
+    def follow_sales():
+        """A refund posts to contra-revenue only behind positive evidence of its sale; a dispute always waits."""
+        for action in result['actions']:
+            bt = movement(action)
+            if bt is not None and bt.get('type') not in _SALE_KINDS:
+                batch_followers.setdefault((resolver.links.get(bt['id']) or {}).get('charge'), []).append(bt)
         for action in list(result['actions']):
-            source = action.get('reclassifies') or action['source_id']
-            if source not in validated:
+            bt = movement(action)
+            if bt is None:
                 continue
-            bt = validated[source][0]
             if bt.get('type') in _REFUND_KINDS and not action.get('review_reason'):
-                reason = sale_release(bt, action['kind'] == 'reclassification')
-                if reason:
+                outcome, reason = sale_evidence(bt)
+                if outcome == 'hold':
                     to_holding(action, reason)
-            elif action.get('review_reason') == 'dispute_requires_review' and sale_release(bt, False) == 'sale_in_holding':
+                elif outcome == 'unresolved':
+                    to_unresolved(action, reason)
+            elif action.get('review_reason') == 'dispute_requires_review' and sale_evidence(bt) == ('hold', 'sale_in_holding'):
                 to_holding(action, 'sale_in_holding')
 
     def link_entries():
-        """Durable links for each final entry, written as entry metadata in the same transaction."""
+        """Durable ownership and links for each final entry, written as entry metadata in the same transaction."""
         for action in result['actions']:
-            source = action.get('reclassifies') or action['source_id']
-            if source not in validated:
+            bt = movement(action)
+            if bt is None:
                 continue
-            bt = validated[source][0]
             link = resolver.links.get(bt['id']) or {}
             meta = {}
             if bt.get('type') in _SALE_KINDS:
-                if action['kind'] != 'reclassification' and _ref_id(bt.get('source')):
-                    meta['stripe-charge'] = _ref_id(bt['source'])
-                if not action.get('review_reason') and link.get('invoice'):
-                    meta['stripe-invoice'] = link['invoice']
-            elif action['kind'] != 'reclassification' and _identity_movement(bt):
+                # A held sale owns what it names too: a person decides it, and nothing else may claim it meanwhile.
+                for kind, ids in owned_ids(bt).items():
+                    if ids:
+                        meta[_OWNERSHIP_META[kind]] = ' '.join(sorted(ids))
+            else:
                 if link.get('charge'):
                     meta['stripe-refund-of'] = link['charge']
                 if link.get('sale'):
@@ -1545,11 +1704,13 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 result['skipped'].append(dict(source_id=sid, reason='invoice_settlement_recorded'))
             continue
         try:
-            result['source_capture_digests'][sid] = _source_capture_digest(bt, objects, policy)
+            result['source_capture_digests'][sid] = _source_capture_digest(
+                bt, objects, policy, lambda txn: f"stripe:{account}:{txn}" in validated and changed(f"stripe:{account}:{txn}"))
         except (ValueError, KeyError, TypeError, AttributeError):
-            # Ordinary validation below holds malformed new movements. A changed
-            # posted movement must not match its previously valid authority graph.
-            result['source_capture_digests'][sid] = _digest({'invalid_source': sid})
+            # Ordinary validation below holds malformed new movements; a movement that would post or record
+            # no effect without a fingerprint stays unresolved instead. The marker is never evidence: cleanup of
+            # a posted source whose fingerprint is unavailable needs review (see _recover_stripe_cleanup).
+            result['source_capture_digests'][sid] = _unavailable_fingerprint(sid)
         if sid in reversed_ids:
             result['skipped'].append(dict(source_id=sid, reason='reversed')); continue
         if changed(sid):
@@ -1563,11 +1724,8 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                     normalized_source={**normalized, 'stripe_no_effect_capture_digest': recorded_no_effect}))
             continue
         if sid in posted:
+            # Posted once; a held entry stays in the holding account until a person corrects it.
             result['skipped'].append(dict(source_id=sid, reason='already_posted'))
-            action = reclassification(sid)
-            if action:
-                result['actions'].append(action)
-                result['reclassified'].append(dict(source_id=sid, reclassification_id=action['source_id']))
             continue
         result['normalized_sources'].append(normalized)
         try:
@@ -1627,6 +1785,8 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                         if bt['fee'] != 0 or payout.get('status') != 'paid' or payout.get('failure_balance_transaction'):
                             raise ValueError('invalid_zero_payout')
                         capture = result['source_capture_digests'][sid]
+                        if capture == _unavailable_fingerprint(sid):
+                            raise ValueError('capture_fingerprint_unavailable')
                         previous_effect = (saved.get(sid) or {}).get('stripe_no_effect_capture_digest')
                         if sid in saved and previous_effect != capture:
                             raise ValueError('changed_no_effect_evidence')
@@ -1648,6 +1808,8 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 authority = [STRIPE_HOLDING_AUTHORITY]
             if sum(amount for _, amount in postings) != 0:
                 raise ValueError('unbalanced_stripe_evidence')
+            if result['source_capture_digests'][sid] == _unavailable_fingerprint(sid):
+                raise ValueError('capture_fingerprint_unavailable')
             posting_docs = [dict(account=acc, amount=_amount(amount), currency=book) for acc, amount in postings if amount]
             for posting in posting_docs:
                 # The holding account opens with the clearing account the first time it is needed.
@@ -1666,8 +1828,8 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['actions'] = [row for row in result['actions'] if row['source_id'] != sid]
             result['uncategorized'] = [row for row in result['uncategorized'] if row['source_id'] != sid]
             result['unresolved'].append(dict(source_id=sid, reason=str(exc)))
-    claim_invoices()
-    release_refunds()
+    claim_sales()
+    follow_sales()
     link_entries()
     # Match bank arrivals separately: a payout may have posted to transit in a
     # previous cohort/month before its real bank deposit arrived.
@@ -1696,7 +1858,6 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         except (ValueError, KeyError, TypeError, ArithmeticError) as exc:
             result['actions'] = []  # Prior bank income must be corrected first.
             result['uncategorized'] = []
-            result['reclassified'] = []
             result['entry_links'] = {}
             result['unresolved'].append(dict(source_id=by_payout[payout]['bank_source_id'], reason=str(exc)))
             break
@@ -1791,6 +1952,9 @@ def _recover_stripe_cleanup(entity, plan):
             recovered.add(sid)
         else:
             review[sid] = 'no receipt and the posted entry does not match the current plan'
+    for sid in sorted(eligible):
+        if plan['source_capture_digests'].get(sid) == _unavailable_fingerprint(sid):
+            review[sid] = 'the current evidence cannot be fingerprinted'  # Never positive evidence.
     recovered -= set(review)
     return sorted(recovered), [dict(source_id=sid, reason='cleanup_needs_review', detail=review[sid])
                                for sid in sorted(review)]
@@ -1805,7 +1969,7 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
     if preview['plan_digest'] != expected_plan_digest:
         raise ValueError('Stripe plan changed; refresh the captured plan before applying.')
     staged = {row['id'] for row in _load_pending_categorization(entity)}
-    if any(action['source_id'] not in staged for action in preview['actions'] if action['kind'] != 'reclassification'):
+    if any(action['source_id'] not in staged for action in preview['actions']):
         raise ValueError('Stage every selected source before applying the approved Stripe plan.')
     with _entity_write_lock(entity.path):
         plan = stripe_plan(entity, evidence, policy, bank_matches=bank_matches, closed_through=closed_through,
@@ -1817,7 +1981,7 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
         if needs_review:
             queue._set_pending_hold_reason(entity, [row['source_id'] for row in needs_review], queue.STRIPE_CLEANUP_HOLD_REASON)
         pending = {row['id']: row for row in _load_pending_categorization(entity)}
-        sourced = [action for action in plan['actions'] if action['kind'] != 'reclassification']
+        sourced = plan['actions']
         if any(action['source_id'] not in pending for action in sourced):
             raise ValueError('Stage every selected source before applying the approved Stripe plan.')
         entries = [Entry(date=date.fromisoformat(action['normalized_source']['date']),
@@ -1829,16 +1993,7 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
                   *(tuple(pair) for pair in plan['entry_links'].get(action['source_id'], []))),
             postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
             for action in sourced]
-        # A reclassification has no bank row of its own: its source ID is derived from the held movement, so the
-        # ledger's unique source ID refuses a second copy, and it is written in the same transaction as the batch.
-        moves = [Entry(date=date.fromisoformat(action['date']), narration=action['description'],
-            meta=(('source-id', action['source_id']), ('import-session', session_id),
-                  ('stripe-policy-digest', plan['policy_digest']), ('stripe-authority', action['authority_id']),
-                  ('stripe-source-digest', action['source_digest']), ('stripe-reclassifies', action['reclassifies']),
-                  *(tuple(pair) for pair in plan['entry_links'].get(action['source_id'], []))),
-            postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
-            for action in plan['actions'] if action['kind'] == 'reclassification']
-        if entries or moves:
+        if entries:
             actions = {action['source_id']: action for action in sourced}
             body = dict(schema_version=1, kind='stripe-finalization', policy_digest=plan['policy_digest'],
                         evidence_digest=plan['evidence_digest'], sources=[
@@ -1847,7 +2002,7 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
                                  source_digest=_digest(actions[entry.source_id]['normalized_source']),
                                  capture_digest=plan['source_capture_digests'][entry.source_id]) for entry in entries])
             receipt = {**body, 'operation_hash': _digest(body)}
-            _atomic_ledger_write_unlocked(entity, _holding_opens(entity, policy, plan), entries + moves, session_id, ts,
+            _atomic_ledger_write_unlocked(entity, _holding_opens(entity, policy, plan), entries, session_id, ts,
                                          'Apply approved Stripe clearing batch',
                                          [action['normalized_source'] for action in sourced],
                                          finalization_receipt=receipt)
@@ -1860,14 +2015,12 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
         if ids:
             StagingStore(entity.staging_dir).bulk_mark_seen(ids)
             queue._remove_many_from_pending_categorization(entity, ids)
-        return dict(posted=len(entries) + len(moves), no_financial_effect=len(plan['no_effect']),
+        return dict(posted=len(entries), no_financial_effect=len(plan['no_effect']),
                     skipped=len(plan['skipped']), held=len(plan['unresolved']),
                     next_cursor=plan['next_cursor'], plan_digest=plan['plan_digest'],
                     unresolved=[dict(row) for row in plan['unresolved']],
                     needs_review=[dict(row) for row in needs_review],
-                    uncategorized=[dict(row) for row in plan['uncategorized']],
-                    reclassified=[dict(row) for row in plan['reclassified']],
-                    reclassification_blocked=[dict(row) for row in plan['reclassification_blocked']])
+                    uncategorized=[dict(row) for row in plan['uncategorized']])
 
 
 def stripe_dismiss_held(entity, source_id, *, note, session_id='stripe-dismiss', ts=None):

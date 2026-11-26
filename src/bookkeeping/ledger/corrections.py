@@ -123,7 +123,11 @@ def _live_lineage(store: Any, source_id: str, entries: list[Entry]) -> str | Non
     spellings = source_id_variants(source_id)
     for entry in entries:
         meta = dict(entry.meta)
-        if entry.source_id and meta.get("correction-of") in spellings and entry.source_id not in spellings:
+        if entry.source_id and meta.get("correction-of") in spellings:
+            if source_id_variants(entry.source_id) & spellings:
+                # A correction under another spelling of its predecessor (written before such corrections were
+                # refused): the lineage is ambiguous, so it never counts as unwound.
+                return entry.source_id
             live = _live_lineage(store, entry.source_id, entries)
             if live:
                 return live
