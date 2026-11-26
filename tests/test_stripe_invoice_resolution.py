@@ -2446,6 +2446,11 @@ class RoundSevenDecisionTests(RecheckFixture):
                 self.assertEqual([], plan['actions'])
                 self.assertUnresolved(plan, 'legacy_stripe_entries_present')
 
+    def test_an_account_that_only_prefixes_the_source_id_proves_nothing(self):
+        # 'acct_other:txn' is no Stripe account ID; matching 'stripe:acct_other:txn:...' as a prefix is text, not proof.
+        self.foreign((('stripe-kind', 'sale'), ('stripe-account', 'acct_other:txn')), source='stripe:acct_other:txn:elsewhere')
+        self.assertUnresolved(self.plan(), 'legacy_stripe_entries_present')
+
     def test_this_accounts_entry_needs_its_account_too(self):
         # The same account's sale with a kind but no account (a pre-round-7 build of this branch) proves nothing.
         self.foreign((('stripe-kind', 'sale'),), source='stripe:acct_test:txn_elsewhere')
