@@ -74,11 +74,26 @@ combined: a copy may add fields or invoice lines the other leaves out, but the
 copies must agree on every field the engine reads, including nested lines,
 taxes, discounts and metadata. Accounting checks run on the combined result.
 
+The engine resolves first and decides after. For each movement it gathers one
+closure of everything the evidence says about the charge: every copy of the
+charge (captured, expanded on a balance transaction, a refund, a dispute, an
+invoice payment or an invoice), every copy of its payment intent (including one
+named only by a refund, or one whose `latest_charge` names the charge), Checkout
+sessions and invoice payments of both types for the charge or intent, and every
+invoice they name, including an invoice that only names the charge or intent
+back (`invoice.charge`, `invoice.payment_intent`). It follows these references
+until nothing new is found, in both directions, so the order of the arrays or the
+side that states a relationship does not change the result. Only then does it
+validate the closure.
+
 The identity is uncertain, and the movement posts to the holding account with a
 `review_reason`, when references name different objects, a named invoice, charge,
 refund or payment intent is not in the evidence, two Checkout sessions claim one
 payment, an expanded object has no ID, copies disagree, or a document is
-explicitly from the other live/test mode.
+explicitly from the other live/test mode. Every relationship used must also be in
+the policy currency when it states one: a Checkout session, an invoice payment or
+a price in another currency is held (`checkout_session_currency_conflict`,
+`invoice_payment_currency_conflict`, `price_currency_conflict`).
 
 Invoice payments count in both shapes, `payment.type: "payment_intent"` and
 `payment.type: "charge"`, and are checked together. An invoice belongs to one
@@ -86,16 +101,26 @@ charge: an invoice whose `charge` or `payment_intent` names another object, a
 payment intent whose `latest_charge` is another charge, an invoice or payment
 intent in another currency, and an invoice that another payment also claims (a
 second charge that is not failed, a succeeded payment intent, a paid invoice
-payment, or a Checkout session with another payment intent) are held
+payment, a Checkout session with another payment intent, or another live charge
+for the same payment intent) are held
 (`invoice_reference_conflict`, `payment_intent_reference_conflict`,
 `invoice_currency_conflict`, `invoice_claimed_by_another_payment`). A line's
 price, its pricing details, `price_id`, `product_id`, the captured price and
-the captured product must name the same objects; a contradiction is held with
+every expanded or captured copy of the product must name the same objects and
+agree on metadata; a contradiction is held with
 `price_reference_conflict` or `product_reference_conflict`. Revenue rules read
 the same combined payment intent that resolved the invoice. Copies may word
 descriptive text differently (`description`, statement descriptors, receipt and
 hosted URLs, `footer`); amounts, taxes, discounts, selectors, identity and line
 completeness must still agree.
+
+Invoice ownership is durable. A sale entry that allocates an invoice records it
+as `stripe-invoice` metadata, in the same transaction as the entry (a move
+records it too). A later sale in another cohort that resolves to an invoice a
+live entry already claims is held with `invoice_claimed_by_another_payment`;
+two sales in one batch that claim one invoice are both held. Reversing the
+claiming entry frees the invoice. Entries posted by earlier releases have no
+claim.
 
 A refund or dispute follows its sale: the same evidence, including the sale
 movement's expanded source in the same cohort and the refund's own expanded
@@ -103,10 +128,15 @@ payment intent, and the sale's posted treatment. A refund needs a verified sale
 movement (the charge's `balance_transaction`, or the one sale movement of the
 charge in the cohort); without one it is held with `sale_movement_unverified`.
 While the sale sits in the holding account, its refunds and disputes are held
-with `sale_in_holding`. The plan decides that on its final actions: a refund is
-released only by a live move of its sale in the ledger or by a sale move that
-the same batch accepts after every source check. A refund whose sale this batch
-posts to the holding account is held too. A refund that names another payment
+with `sale_in_holding`. The plan decides that from the ledger and its final
+actions: a held refund moves only when the ledger has a live sale entry for that
+movement outside the holding account (or a live move of it), or the same apply
+accepts the sale's move or posts the sale to revenue. A sale movement ID that the
+ledger does not know, or that differs from the sale recorded for the charge
+(`stripe-charge` on the sale entry, `stripe-sale` on the refund entry), is no
+proof; the refund stays with `sale_movement_unverified`. A new refund whose sale
+this batch posts to the holding account is held too; a new refund of a sale the
+books have never seen (before the cutover) posts as before. A refund that names another payment
 intent than its charge is held with `refund_reference_conflict`. Disputes always
 post to the holding account, because no approved policy names a dispute account.
 
@@ -130,12 +160,19 @@ same batch or an earlier one). Disputes are not reclassified.
 
 A move needs the same authority as a new posting: the held movement must be
 unchanged, the account must not need accrual treatment, and neither the net nor
-the gross may be above the ask-first limit. Otherwise the plan proposes no move
-and the entry stays in the holding account for a person.
+the gross may be above the ask-first limit, and no open review item may own it.
+Otherwise the plan proposes no move, the entry stays in the holding account, and
+the plan and the apply result list it in `reclassification_blocked` as
+`{source_id, reason}` (`above_ask_first_amount`, `accrual_treatment_required`,
+`existing_review`). These rows are not new holds and are not counted in `held`.
 
 An original entry that has a live move cannot be reversed or corrected on its
 own (`books ledger reverse`, `books ledger correct`): reverse the
-`stripe-reclassify:` entry first, then the original.
+`stripe-reclassify:` entry first, then the original. A move can be reversed but
+not replaced by a correction, and a move replaced by an earlier release still
+counts as live through its correction. A Stripe source ID has one spelling: an
+alias such as `banksync:stripe:...` is refused, so the guard and the reversal
+always name the real entry.
 
 Bank matching requires the original bank source ID/digest, payout ID, exact
 currency/amount and approved current bank mapping. A bank arrival can occur after

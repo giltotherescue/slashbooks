@@ -1533,7 +1533,7 @@ def reverse_and_correct(
     # _atomic_ledger_write below takes the same lock again; the lock is reentrant in one context.
     with _entity_write_lock(entity.path):
         from .corrections import _require_unmanaged_entry
-        _require_unmanaged_entry(entity, original_source_id)
+        _require_unmanaged_entry(entity, original_source_id, correcting=True)
         staging = StagingStore(entity.staging_dir)
 
         store = _ensure_ledger_store(entity)

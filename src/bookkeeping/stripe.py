@@ -337,26 +337,140 @@ def _combine(docs, label, fields):
     return view
 
 
-class _Resolver:
-    """Which charge, payment intent, invoice or Checkout session a movement belongs to, from every copy.
+def _ref_id(value):
+    """The ID a reference names (a string, or an expanded object's ``id``); None for anything else."""
+    identity = _object_id(value)
+    return identity if isinstance(identity, str) and identity else None
 
-    ``_Hold`` means the identity is uncertain (the movement posts to the holding account); any other
-    ``ValueError`` means a known sale whose allocation or settlement is not complete (it stays unposted).
 
-    ``trace`` (a list) collects every provider document the resolver reads, and ``competing`` every group of
-    sale movements that name one charge, so a receipt can bind exactly the graph that decided a posting.
-    ``links`` maps a refund or dispute movement to the sale movement it follows.
+def _live_charge(doc):
+    return doc.get('status') != 'failed' and doc.get('paid') is not False
+
+
+class _Index:
+    """Every relationship in one evidence envelope, by the ID it names, built once per plan.
+
+    Each relationship is indexed from both ends: a charge's ``invoice`` and an invoice whose ``charge`` names
+    the charge both connect the two. Every known copy of an object (captured, or expanded anywhere in the
+    envelope) is listed under its ID, so neither the order of the arrays nor the side that states a
+    relationship changes what the resolver finds.
     """
 
-    def __init__(self, policy, bts, objects, sale_held=None, trace=None):
+    def __init__(self, bts, objects):
+        self.copies = {'charge': {}, 'intent': {}, 'invoice': {}}
+        self.names = {'charge': {}, 'intent': {}, 'invoice': {}}  # id -> [(kind, doc)] that name the object
+        self.sales = {}  # charge id -> sorted sale movement ids
+        seen = set()
+
+        def copy(kind, doc):
+            if isinstance(doc, dict) and _ref_id(doc.get('id')) and (kind, id(doc)) not in seen:
+                seen.add((kind, id(doc)))
+                self.copies[kind].setdefault(doc['id'], []).append(doc)
+                return True
+            return False
+
+        def name(kind, ref, by, doc):
+            identity = _ref_id(ref)
+            if identity:
+                rows = self.names[kind].setdefault(identity, [])
+                if not any(row is doc for _, row in rows):
+                    rows.append((by, doc))
+
+        def charge(doc):
+            if copy('charge', doc):
+                name('intent', doc.get('payment_intent'), 'charge', doc)
+                name('invoice', doc.get('invoice'), 'charge', doc)
+                intent(doc.get('payment_intent')); invoice(doc.get('invoice'))
+
+        def intent(doc):
+            if copy('intent', doc):
+                name('invoice', doc.get('invoice'), 'intent', doc)
+                name('charge', doc.get('latest_charge'), 'intent', doc)
+                invoice(doc.get('invoice')); charge(doc.get('latest_charge'))
+
+        def invoice(doc):
+            if copy('invoice', doc):
+                name('charge', doc.get('charge'), 'invoice', doc)
+                name('intent', doc.get('payment_intent'), 'invoice', doc)
+                charge(doc.get('charge')); intent(doc.get('payment_intent'))
+
+        def follower(kind, doc):  # A refund or dispute names its charge and maybe its intent.
+            name('charge', doc.get('charge'), kind, doc)
+            name('intent', doc.get('payment_intent'), kind, doc)
+            charge(doc.get('charge')); intent(doc.get('payment_intent'))
+
+        for doc in objects['charges'].values():
+            charge(doc)
+        for doc in objects['paymentIntents'].values():
+            intent(doc)
+        for doc in objects['invoices'].values():
+            invoice(doc)
+        for row in sorted(bts.values(), key=lambda row: row['id']):
+            source = row.get('source')
+            if row.get('type') in _SALE_KINDS:
+                charge(source)
+                if _ref_id(source):
+                    self.sales.setdefault(_ref_id(source), []).append(row['id'])
+            elif row.get('type') in _REFUND_KINDS and isinstance(source, dict):
+                follower('refund', source)
+            elif row.get('type') == 'adjustment' and isinstance(source, dict) and _is_dispute(source):
+                follower('dispute', source)
+        for kind, rows in (('refund', objects['refunds']), ('dispute', objects['disputes'])):
+            for doc in rows.values():
+                follower(kind, doc)
+        for doc in objects['checkoutSessions'].values():
+            name('intent', doc.get('payment_intent'), 'session', doc)
+            name('invoice', doc.get('invoice'), 'session', doc)
+            intent(doc.get('payment_intent')); invoice(doc.get('invoice'))
+        for doc in objects['invoicePayments'].values():
+            payment = doc.get('payment') if isinstance(doc.get('payment'), dict) else {}
+            if payment.get('type') == 'charge':
+                name('charge', payment.get('charge'), 'payment', doc)
+            name('intent', payment.get('payment_intent'), 'payment', doc)
+            name('invoice', doc.get('invoice'), 'payment', doc)
+            charge(payment.get('charge')); intent(payment.get('payment_intent')); invoice(doc.get('invoice'))
+
+    def named(self, kind, identity, by):
+        return [doc for name, doc in self.names[kind].get(identity, []) if name == by]
+
+
+class _Closure:
+    """Everything the evidence says about one charge, gathered before anything is decided."""
+
+    def __init__(self, charge_id):
+        self.charge_id = charge_id
+        self.charge_docs, self.intent_refs, self.intent_docs = [], [], []
+        self.sessions, self.payments, self.invoice_refs, self.invoice_docs = [], [], [], []
+        self.backlink_intents, self.named_charges, self.claimants, self.followers = set(), set(), [], []
+        self.rivals = []  # Other live charges for the same payment intent.
+
+
+class _Resolver:
+    """Which charge, payment intent, invoice or Checkout session a movement belongs to.
+
+    Resolve first, then decide: :meth:`closure` follows every reference to and from one charge, through its
+    payment intent, Checkout sessions, invoice payments of both types and invoices (including an invoice that
+    only names the charge back), and only then :meth:`resolve` validates the whole closure. ``_Hold`` means the
+    identity is uncertain (the movement posts to the holding account); any other ``ValueError`` means a known
+    sale whose allocation or settlement is not complete (it stays unposted).
+
+    ``trace`` (a list) collects every provider document the closure used; ``lookups`` the movement IDs it looked
+    up with what it found (or None), so a receipt binds exactly what decided a posting. ``links`` maps each
+    movement to its charge, its sale movement and its invoice. ``ledger_claims`` maps an invoice ID to the sale
+    movements whose live ledger entries already claim it.
+    """
+
+    def __init__(self, policy, bts, objects, trace=None, ledger_claims=None):
         self.policy, self.mode, self.cur = policy, policy['livemode'], policy['currency'].lower()
         self.bts = bts
         self.charges, self.refunds, self.invoices = objects['charges'], objects['refunds'], objects['invoices']
         self.prices, self.products, self.intents = objects['prices'], objects['products'], objects['paymentIntents']
-        self.payments, self.sessions, self.disputes = objects['invoicePayments'], objects['checkoutSessions'], objects['disputes']
-        self.sale_held = sale_held or (lambda sale_bt: None)
-        self.trace, self.competing, self.links = trace, set(), {}
-        self._shared = objects  # One claims index per plan, shared by every resolver over the same evidence.
+        self.disputes = objects['disputes']
+        if objects.get('_index') is None:
+            objects['_index'] = _Index(bts, objects)  # One index per plan, shared by every resolver.
+        self.index = objects['_index']
+        self.trace, self.lookups, self.competing, self.links = trace, {}, set(), {}
+        self.ledger_claims = ledger_claims or {}
 
     def use(self, *docs):
         if self.trace is not None:
@@ -371,138 +485,154 @@ class _Resolver:
         if doc.get('livemode') is not None and doc.get('livemode') is not self.mode:
             raise _Hold('livemode_conflict')
 
-    def charge(self, refs):
-        """The combined charge, its copies, and the one sale movement of it in the cohort (or None).
+    def check_currency(self, doc, label):
+        currency = doc.get('currency')
+        if currency is not None and (not isinstance(currency, str) or currency.lower() != self.cur):
+            raise _Hold(f'{label}_currency_conflict')
 
-        Copies come from the references, the captured charge, and every sale movement that names the charge,
-        so a charge expanded only on its sale movement still resolves a refund that names it by ID.
-        """
-        identity, docs = self.docs(refs, self.charges, 'charge')
+    @staticmethod
+    def unique(docs):
+        result = []
+        for doc in docs:
+            if isinstance(doc, dict) and not any(doc is row for row in result):
+                result.append(doc)
+        return result
+
+    # Resolve: gather every copy and relationship of one charge.
+
+    def closure(self, refs, followers=()):
+        """The closure of the one charge that *refs* name; ``followers`` are the movement's refund/dispute copies."""
+        identity, _ = _docs(refs, {}, 'charge')
         if identity is None:
-            return None, docs, None
-        sales = sorted(sid for sid, row in self.bts.items()
-                       if row.get('type') in _SALE_KINDS and _object_id(row.get('source')) == identity)
+            return None
+        index, found = self.index, _Closure(identity)
+        found.charge_docs = self.unique([ref for ref in refs if isinstance(ref, dict)] + index.copies['charge'].get(identity, []))
+        # A refund or dispute of this charge that names a payment intent or expands the charge adds evidence.
+        found.followers = self.unique(list(followers) + [doc for kind in ('refund', 'dispute')
+                                                         for doc in index.named('charge', identity, kind)
+                                                         if doc.get('payment_intent') or isinstance(doc.get('charge'), dict)])
+        own_payments = index.named('charge', identity, 'payment')
+        found.intent_refs = ([doc.get('payment_intent') for doc in found.charge_docs + found.followers]
+                             + [(doc.get('payment') or {}).get('payment_intent') for doc in own_payments]
+                             + [{'id': doc['id']} for doc in index.named('charge', identity, 'intent')])
+        intents = {_ref_id(ref) for ref in found.intent_refs} - {None}
+        invoices, previous = set(), None
+        while previous != (frozenset(intents), frozenset(invoices)):  # Follow references until nothing new is found.
+            previous = (frozenset(intents), frozenset(invoices))
+            sessions = [doc for intent in sorted(intents) for doc in index.named('intent', intent, 'session')]
+            payments = own_payments + [doc for intent in sorted(intents) for doc in index.named('intent', intent, 'payment')]
+            found.sessions, found.payments = self.unique(sessions), self.unique(payments)
+            backlinks = index.named('charge', identity, 'invoice') + [
+                doc for intent in sorted(intents) for doc in index.named('intent', intent, 'invoice')]
+            found.invoice_refs = ([doc.get('invoice') for doc in found.charge_docs]
+                                  + [doc.get('invoice') for intent in sorted(intents) for doc in index.copies['intent'].get(intent, [])]
+                                  + [doc.get('invoice') for doc in found.sessions + found.payments]
+                                  + [{'id': doc['id']} for doc in backlinks])
+            invoices = {_ref_id(ref) for ref in found.invoice_refs} - {None}
+            intents |= {_ref_id((doc.get('payment') or {}).get('payment_intent')) for doc in found.payments} - {None}
+        found.intent_docs = self.unique([ref for ref in found.intent_refs if isinstance(ref, dict) and len(ref) > 1]
+                                        + [doc for intent in sorted(intents) for doc in index.copies['intent'].get(intent, [])])
+        found.invoice_docs = self.unique([doc for invoice in sorted(invoices) for doc in index.copies['invoice'].get(invoice, [])])
+        for doc in found.invoice_docs:
+            if _ref_id(doc.get('charge')):
+                found.named_charges.add(_ref_id(doc['charge']))
+            if _ref_id(doc.get('payment_intent')):
+                found.backlink_intents.add(_ref_id(doc['payment_intent']))
+        for doc in found.intent_docs:
+            if doc.get('latest_charge') is not None:
+                found.named_charges.add(_ref_id(doc['latest_charge']))
+        # Anything else that claims the same payment intent or invoice competes with this charge.
+        found.rivals = self.unique([doc for intent in sorted(intents) for doc in index.named('intent', intent, 'charge')
+                                    if doc['id'] != identity and _live_charge(doc)])
+        for invoice in sorted(invoices):
+            found.claimants += [doc for doc in index.named('invoice', invoice, 'charge') if doc['id'] != identity and _live_charge(doc)]
+            found.claimants += [doc for doc in index.named('invoice', invoice, 'intent')
+                                if doc['id'] not in intents and doc.get('status') in (None, 'succeeded')]
+            found.claimants += [doc for doc in index.named('invoice', invoice, 'session')
+                                if _ref_id(doc.get('payment_intent')) not in intents | {None}
+                                and doc.get('payment_status') != 'unpaid' and doc.get('status') != 'expired']
+            found.claimants += [doc for doc in index.named('invoice', invoice, 'payment')
+                                if doc.get('status') == 'paid' and not any(doc is row for row in found.payments)]
+        found.claimants = self.unique(found.claimants)
+        self.use(*found.charge_docs, *found.followers, *found.intent_docs, *found.sessions, *found.payments,
+                 *found.invoice_docs, *found.rivals, *found.claimants)
+        return found
+
+    def charge(self, refs, followers=()):
+        """``(charge view, closure, sale movement)`` for the one charge *refs* name, or ``(None, None, None)``."""
+        found = self.closure(refs, followers)
+        if found is None:
+            return None, None, None
+        identity = found.charge_id
+        sales = sorted(self.index.sales.get(identity, []))
         if len(sales) > 1:
             self.competing.add(tuple(sales))
-        identity, docs = self.docs(list(refs) + [self.bts[sid]['source'] for sid in sales], self.charges, 'charge')
-        if not docs:
-            return None, docs, None
-        charge = _combine(docs, 'charge', _CHARGE_FIELDS)
+        if not found.charge_docs:
+            self.lookups[('sales', identity)] = (tuple(sales), None, None)
+            return None, found, None
+        charge = _combine(found.charge_docs, 'charge', _CHARGE_FIELDS)
         self.check_mode(charge)
         if charge.get('livemode') is not self.mode:
             raise _Hold('charge_identity_unverified')
-        linked = _object_id(charge.get('balance_transaction'))
-        if len(sales) > 1 or (sales and linked and linked != sales[0]) or (
-                linked in self.bts and _object_id(self.bts[linked].get('source')) != identity):
+        linked = _ref_id(charge.get('balance_transaction'))
+        source = _ref_id(self.bts[linked].get('source')) if linked in self.bts else None
+        # The movement lookups decide the posting too: bind what they found, including nothing.
+        self.lookups[('sales', identity)] = (tuple(sales), linked, source)
+        if len(sales) > 1 or (sales and linked and linked != sales[0]) or (linked in self.bts and source != identity):
             raise _Hold('charge_reference_conflict')
-        return charge, docs, linked or (sales[0] if sales else None)
+        return charge, found, linked or (sales[0] if sales else None)
 
-    @staticmethod
-    def pays(row, charge_id, intent_id):
-        """Whether an invoice payment names this charge, directly or through its payment intent."""
-        payment = row.get('payment') if isinstance(row.get('payment'), dict) else {}
-        if payment.get('type') == 'charge':
-            return _object_id(payment.get('charge')) == charge_id
-        return bool(intent_id) and payment.get('type') == 'payment_intent' and _object_id(payment.get('payment_intent')) == intent_id
+    # Decide: validate the complete closure, then allocate.
 
-    def claims(self):
-        """Every provider object in the evidence that names an invoice, by invoice ID."""
-        if self._shared.get('_invoice_claims') is None:
-            index = {}
-
-            def add(ref, kind, doc):
-                invoice = _object_id(ref)
-                if isinstance(invoice, str) and invoice and isinstance(doc.get('id'), str):
-                    index.setdefault(invoice, []).append((kind, doc))
-            charge_docs = list(self.charges.values()) + [row['source'] for row in self.bts.values()
-                                                         if row.get('type') in _SALE_KINDS and isinstance(row.get('source'), dict)]
-            for doc in charge_docs:
-                add(doc.get('invoice'), 'charge', doc)
-                if isinstance(doc.get('payment_intent'), dict):
-                    add(doc['payment_intent'].get('invoice'), 'intent', doc['payment_intent'])
-            for kind, rows in (('intent', self.intents), ('payment', self.payments), ('session', self.sessions)):
-                for doc in rows.values():
-                    add(doc.get('invoice'), kind, doc)
-            self._shared['_invoice_claims'] = index
-        return self._shared['_invoice_claims']
-
-    def own_invoice(self, identity, invoice, charge_id, intent_id):
-        """The invoice belongs to this charge alone: its backlinks agree and no other payment claims it."""
-        if invoice.get('currency') not in (None, self.cur):
-            raise _Hold('invoice_currency_conflict')
-        if invoice.get('charge') is not None and _object_id(invoice['charge']) != charge_id:
-            raise _Hold('invoice_reference_conflict')
-        if invoice.get('payment_intent') is not None and _object_id(invoice['payment_intent']) != intent_id:
-            raise _Hold('invoice_reference_conflict')
-        others = []
-        for kind, doc in self.claims().get(identity, []):
-            if kind == 'charge':
-                other = doc['id'] != charge_id and doc.get('status') != 'failed' and doc.get('paid') is not False
-            elif kind == 'intent':
-                other = doc['id'] != intent_id and doc.get('status') in (None, 'succeeded')
-            elif kind == 'payment':
-                other = doc.get('status') == 'paid' and not self.pays(doc, charge_id, intent_id)
-            else:  # A subscription-mode Checkout session names no payment intent; only a different one competes.
-                named = _object_id(doc.get('payment_intent'))
-                other = (named is not None and named != intent_id and doc.get('payment_status') != 'unpaid'
-                         and doc.get('status') != 'expired')
-            if other:
-                others.append(doc)
-        if others:
-            self.use(*others)
-            raise _Hold('invoice_claimed_by_another_payment')
-
-    def document(self, charge, charge_docs, gross, extra_intents=()):
-        """``(invoice or Checkout view, has_document, payment intent view)`` for one combined charge.
-
-        ``extra_intents`` are the payment intents a refund or dispute names (IDs or expanded copies).
-        """
-        charge_id = _object_id(charge.get('id'))
-        intent_id = _object_id(charge.get('payment_intent'))
-        sessions = [row for row in self.sessions.values()
-                    if intent_id and _object_id(row.get('payment_intent')) == intent_id]
-        payments = [row for row in self.payments.values() if self.pays(row, charge_id, intent_id)]
-        self.use(*sessions, *payments)
-        intent_identity, intent_docs = self.docs(
-            [doc.get('payment_intent') for doc in charge_docs] + list(extra_intents)
-            + [row.get('payment_intent') for row in sessions]
-            + [(row.get('payment') or {}).get('payment_intent') for row in payments], self.intents, 'payment_intent')
-        intent = _combine(intent_docs, 'payment_intent', _INTENT_FIELDS) if intent_docs else {}
-        if intent_docs:
+    def document(self, charge, found, gross, sale_bt):
+        """``(invoice or Checkout view, has_document, payment intent view, invoice ID)`` for a resolved charge."""
+        identity = found.charge_id
+        intent_id, _ = _docs(found.intent_refs + [(row.get('payment') or {}).get('payment_intent') for row in found.payments],
+                             {}, 'payment_intent')
+        intent = _combine(found.intent_docs, 'payment_intent', _INTENT_FIELDS) if found.intent_docs else {}
+        if found.intent_docs:
             self.check_mode(intent)
-            if (intent.get('latest_charge') is not None and _object_id(intent['latest_charge']) != charge_id) or (
+            if (intent.get('latest_charge') is not None and _ref_id(intent['latest_charge']) != identity) or (
                     intent.get('currency') not in (None, self.cur)):
                 raise _Hold('payment_intent_reference_conflict')
-        intent_id = intent_id or intent_identity
-        if len(sessions) > 1:
+        if len(found.sessions) > 1:
             raise _Hold('multiple_checkout_sessions')
-        for row in sessions + payments:
+        for row in found.sessions:
             self.check_mode(row)
-        if len({_object_id(row.get('invoice')) for row in payments if row.get('invoice')}) > 1:
+            self.check_currency(row, 'checkout_session')
+        for row in found.payments:
+            self.check_mode(row)
+            self.check_currency(row, 'invoice_payment')
+        if len({_ref_id(row.get('invoice')) for row in found.payments if row.get('invoice')}) > 1:
             raise _Hold('invoice_reference_conflict')
-        if payments:
-            row = payments[0]
-            if (len(payments) != 1 or row.get('status') != 'paid' or row.get('amount_paid') != gross
-                    or row.get('amount_requested') != gross or row.get('currency') != self.cur
-                    or row.get('livemode') is not self.mode):
+        if found.payments:
+            row = found.payments[0]
+            if (len(found.payments) != 1 or row.get('status') != 'paid' or row.get('amount_paid') != gross
+                    or row.get('amount_requested') != gross or row.get('livemode') is not self.mode):
                 raise ValueError('partial_or_multiple_invoice_payments')
             if not row.get('invoice'):
                 raise _Hold('invoice_identity_unverified')
-        identity, docs = self.docs([doc.get('invoice') for doc in charge_docs + intent_docs]
-                                   + [row.get('invoice') for row in payments + sessions], self.invoices, 'invoice')
-        if identity is not None:
+        invoice_id, docs = self.docs(found.invoice_refs, {}, 'invoice')
+        if invoice_id is not None:
+            docs = found.invoice_docs
             if not docs:
                 raise _Hold('missing_invoice_evidence')
             invoice = _combine(docs, 'invoice', _INVOICE_FIELDS)
             self.check_mode(invoice)
-            self.own_invoice(identity, invoice, charge_id, intent_id)
-            return invoice, True, intent
-        if _object_id(charge.get('payment_intent')) and not intent_docs and not payments and not sessions:
+            self.check_currency(invoice, 'invoice')
+            if found.named_charges - {identity} or found.backlink_intents - {intent_id}:
+                raise _Hold('invoice_reference_conflict')
+            if found.claimants or found.rivals or (self.ledger_claims.get(invoice_id, set()) - {sale_bt}):
+                raise _Hold('invoice_claimed_by_another_payment')
+            return invoice, True, intent, invoice_id
+        if found.named_charges - {identity} or found.rivals:
+            raise _Hold('payment_intent_reference_conflict')
+        if _ref_id(charge.get('payment_intent')) and not found.intent_docs and not found.payments and not found.sessions:
             # A named payment intent that the evidence does not hold is no proof of a sale without an invoice.
             raise _Hold('missing_payment_intent_evidence')
-        if not sessions:
-            return None, False, intent
-        session = sessions[0]
+        if not found.sessions:
+            return None, False, intent, None
+        session = found.sessions[0]
         if (session.get('payment_status') != 'paid' or session.get('status') != 'complete'
                 or session.get('amount_total') != gross or session.get('amount_subtotal') != gross
                 or session.get('currency') != self.cur):
@@ -521,13 +651,13 @@ class _Resolver:
         # Reuse exact line allocation checks; this is an internal view, never a
         # fabricated invoice saved as provider evidence.
         return dict(status='paid', amount_paid=gross, amount_due=gross, total=gross,
-                    lines=dict(has_more=False, data=converted)), True, intent
+                    lines=dict(has_more=False, data=converted)), True, intent, None
 
     def line_price(self, line):
         """``(price_id, product_id, price view, product view)`` for one line, from every reference to them.
 
-        The line's price, its pricing details, its ``price_id``/``product_id`` and the captured price and product
-        must name the same objects; a contradiction holds the sale instead of choosing a side.
+        The line's price, its pricing details, its ``price_id``/``product_id``, the captured price and every
+        expanded or captured product copy must name the same objects; a contradiction holds the sale.
         """
         raw = line.get('price')
         details = (line.get('pricing') or {}).get('price_details')
@@ -559,26 +689,29 @@ class _Resolver:
         except _Hold:
             raise _Hold('price_reference_conflict') from None
         if price.get('currency') not in (None, self.cur):
-            raise _Hold('price_reference_conflict')
-        products = [price.get('product')] if price.get('product') else []
+            raise _Hold('price_currency_conflict')
+        # Every product reference and copy: each price copy's product (expanded or not), the pricing details,
+        # the line's product_id and the captured product.
+        products = [view.get('product') for view in views if view.get('product')]
         if line.get('product_id'):
             products.append(line['product_id'])
         product_id, product_docs = self.docs(products, self.products, 'product')
         product = _combine(product_docs, 'product', _PRODUCT_FIELDS) if product_docs else {}
         return price_id, product_id, price, product
 
-    def allocations(self, charge, charge_docs, gross, extra_intents=()):
+    def allocations(self, charge, found, gross, sale_bt, link):
         policy, cur = self.policy, self.cur
         if charge.get('status') != 'succeeded' or charge.get('paid') is not True or charge.get('captured') is not True:
             raise ValueError('unsettled_charge')
         if _minor(charge.get('amount')) != gross or charge.get('currency') != cur:
             raise ValueError('charge_amount_conflict')
-        invoice, has_invoice, intent = self.document(charge, charge_docs, gross, extra_intents)
+        invoice, has_invoice, intent, invoice_id = self.document(charge, found, gross, sale_bt)
+        link['invoice'] = invoice_id
         # The same payment intent view that resolved the document selects metadata rules.
         context = {'charge': charge, 'payment_intent': intent}
         if not has_invoice:
             rule = _revenue(charge, policy, context)
-            return [(rule['category'], gross, rule['id'])]
+            return [(rule['category'], gross, rule['id'])], invoice
         lines = invoice.get('lines')
         if (not isinstance(lines, dict) or lines.get('has_more') is not False
                 or not isinstance(lines.get('data'), list) or not 1 <= len(lines['data']) <= 100):
@@ -602,35 +735,35 @@ class _Resolver:
             allocations.append((rule['category'], _minor(line['amount']), rule['id']))
         if sum(amount for _, amount, _ in allocations) != gross:
             raise ValueError('invoice_allocation_mismatch')
-        return allocations
+        return allocations, invoice
 
     def sale(self, bt):
-        charge, docs, _ = self.charge([bt.get('source')])
+        link = self.links.setdefault(bt['id'], {'charge': _ref_id(bt.get('source')), 'sale': bt['id']})
+        charge, found, _ = self.charge([bt.get('source')])
         if charge is None:
             raise _Hold('missing_charge_evidence')
-        if _object_id(charge.get('balance_transaction')) != bt['id']:
+        if _ref_id(charge.get('balance_transaction')) != bt['id']:
             raise _Hold('charge_identity_conflict')
-        return self.allocations(charge, docs, bt['amount'])
+        return self.allocations(charge, found, bt['amount'], bt['id'], link)[0]
 
     def follow(self, bt, docs, label, missing):
-        """The charge a refund or dispute belongs to, with the sale's complete evidence:
-        ``(charge, docs, gross, held, intents)``.
+        """The charge a refund or dispute belongs to: ``(charge, closure, gross)``.
 
-        ``held`` is the reason the sale itself sits in the holding account, if it does; ``intents`` are the
-        payment intents the refund or dispute names. A refund needs the sale movement it follows: the charge's
-        ``balance_transaction`` or the one sale movement of the charge in the cohort.
+        Records the charge and the sale movement it follows in ``links``; the plan decides from the ledger
+        and the final batch whether that sale is out of the holding account.
         """
-        charge, charge_docs, sale_bt = self.charge([doc.get('charge') for doc in docs])
+        link = self.links.setdefault(bt['id'], {'charge': None, 'sale': None})
+        refs = [doc.get('charge') for doc in docs]
+        link['charge'] = next((_ref_id(ref) for ref in refs if _ref_id(ref)), None)
+        charge, found, sale_bt = self.charge(refs, docs)
         if charge is None:
             raise _Hold(missing)
-        intents = [doc.get('payment_intent') for doc in docs if doc.get('payment_intent')]
-        own_intents = {_object_id(ref) for ref in intents}
-        charge_intent = _object_id(charge.get('payment_intent'))
+        own_intents = {_ref_id(doc.get('payment_intent')) for doc in docs if doc.get('payment_intent')}
+        charge_intent = _ref_id(charge.get('payment_intent'))
         if len(own_intents) > 1 or (own_intents and charge_intent and own_intents != {charge_intent}):
             raise _Hold(f'{label}_reference_conflict')
-        self.links[bt['id']] = sale_bt
-        held = self.sale_held(sale_bt) if sale_bt else None
-        return charge, charge_docs, _minor(charge.get('amount')), held, intents
+        link['sale'] = sale_bt
+        return charge, found, _minor(charge.get('amount'))
 
     def refund(self, bt):
         _, docs = self.docs([bt.get('source')], self.refunds, 'refund')
@@ -638,20 +771,18 @@ class _Resolver:
             raise _Hold('missing_refund_evidence')
         refund = _combine(docs, 'refund', _REFUND_FIELDS)
         self.check_mode(refund)
-        linked = _object_id(refund.get('balance_transaction'))
+        linked = _ref_id(refund.get('balance_transaction'))
         if linked is not None and linked != bt['id']:
             raise _Hold('refund_reference_conflict')
         if (refund.get('status') != 'succeeded' or refund.get('currency') != self.cur
                 or refund.get('amount') != -bt['amount'] or linked is None):
             raise ValueError('missing_or_unsettled_refund')
-        charge, charge_docs, gross, held, intents = self.follow(bt, docs, 'refund', 'missing_refund_charge_evidence')
-        # A refund follows its sale: the same identity checks first (with the refund's own payment intent
-        # copies), then the sale's posted treatment.
-        invoice, has_invoice, _ = self.document(charge, charge_docs, gross, intents)
-        if self.links.get(bt['id']) is None:
+        charge, found, gross = self.follow(bt, docs, 'refund', 'missing_refund_charge_evidence')
+        link = self.links[bt['id']]
+        # A refund follows its sale: the same closure (with the refund's own copies), then the sale's treatment.
+        invoice, has_invoice, _, _ = self.document(charge, found, gross, link['sale'])
+        if link['sale'] is None:
             raise _Hold('sale_movement_unverified')
-        if held:
-            raise _Hold(held)
         if has_invoice and (not invoice or not isinstance(invoice.get('lines'), dict)
                             or invoice['lines'].get('has_more') is not False
                             or len(invoice['lines'].get('data') or []) != 1):
@@ -659,7 +790,7 @@ class _Resolver:
         # A single line still can contain tax, discounts, credits or
         # partial payment. Do not turn a refused original sale into an
         # apparently safe full contra-revenue refund.
-        self.allocations(charge, charge_docs, gross, intents)
+        self.allocations(charge, found, gross, link['sale'], dict(link))
 
     def dispute(self, bt):
         """A dispute always waits in the holding account: no trusted policy names a dispute account.
@@ -675,14 +806,15 @@ class _Resolver:
                 isinstance(doc.get('balance_transactions'), list)
                 and bt['id'] not in {_object_id(row) for row in doc['balance_transactions']} for doc in docs):
             raise _Hold('dispute_reference_conflict')
-        charge, charge_docs, gross, held, intents = self.follow(bt, docs, 'dispute', 'missing_dispute_charge_evidence')
+        charge, found, gross = self.follow(bt, docs, 'dispute', 'missing_dispute_charge_evidence')
         try:
-            self.document(charge, charge_docs, gross, intents)
+            self.document(charge, found, gross, self.links[bt['id']]['sale'])
         except _Hold:
             raise
         except (ValueError, KeyError, TypeError, ArithmeticError):
             pass  # The charge's sale has its own hold; the dispute still waits for review.
-        raise _Hold(held or 'dispute_requires_review')
+        raise _Hold('dispute_requires_review')
+
 
     def holding(self, bt):
         postings = [(self.policy['clearing_account'], bt['net']), (STRIPE_HOLDING_ACCOUNT, -bt['amount'])]
@@ -1097,9 +1229,13 @@ def _source_capture_digest(bt, objects, policy=None):
             resolver.place(bt)
         except (ValueError, KeyError, TypeError, ArithmeticError, AttributeError):
             pass  # The plan reports the same failure; the documents read until then still bind the receipt.
-        if any(id(doc) not in covered for doc in trace) or resolver.competing:
-            captured['resolved'] = dict(objects=sorted({_digest(doc) for doc in trace}),
-                                        competing_movements=sorted(list(group) for group in resolver.competing))
+        # A lookup is plain when it found exactly the one sale movement the charge names, and that movement
+        # names the charge back; anything else (nothing, a different source, competing movements) is bound.
+        lookups = sorted(([charge, list(sales), linked, source] for (_, charge), (sales, linked, source)
+                          in resolver.lookups.items()
+                          if not (linked is not None and source == charge and sales in ((), (linked,)))), key=json.dumps)
+        if any(id(doc) not in covered for doc in trace) or lookups:
+            captured['resolved'] = dict(objects=sorted({_digest(doc) for doc in trace}), lookups=lookups)
     return _digest(captured)
 
 
@@ -1181,7 +1317,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             raise ValueError('A payout and bank source can each be matched only once.')
         by_payout[po] = match; claimed.add(sid)
     result = dict(actions=[], no_effect=[], normalized_sources=[], unresolved=[], skipped=[], uncategorized=[],
-                  reclassified=[], next_cursor=None,
+                  reclassified=[], reclassification_blocked=[], entry_links={}, next_cursor=None,
                   source_capture_digests={},
                   policy_digest=_digest(policy), evidence_digest=_digest(evidence), ledger_digest=store.content_digest())
     objects = dict(charges=charges, refunds=refunds, invoices=invoices, payouts=payouts, prices=prices,
@@ -1223,23 +1359,24 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
     def reclassify_id(source):
         return STRIPE_RECLASSIFY_PREFIX + source[len('stripe:'):]
 
-    def sale_held(sale_bt):
-        """Why a refund or dispute must wait: its sale sits in the holding account and does not move in this batch."""
-        source = f"stripe:{account}:{sale_bt}"
-        if not held_entry(source):
-            return None
-        moved = reclassify_id(source)
-        if moved in posted and moved not in reversed_ids:
-            return None
-        if reclassification(source):
-            return None  # Released only when the sale's move is accepted in this batch; release_refunds confirms it.
-        return 'sale_in_holding'
-
     def moved_live(source):
         moved = reclassify_id(source)
         return moved in posted and moved not in reversed_ids
 
-    resolver = _Resolver(policy, bts, objects, sale_held)
+    # Durable links, from live ledger entries this engine wrote: which sale movement claims each invoice, and
+    # which sale movements were posted for each charge. A claim is written in the same transaction as its entry.
+    prefix = f"stripe:{account}:"
+    ledger_claims, ledger_sales = {}, {}
+    for source, entry in entries.items():
+        if source not in posted or source in reversed_ids:
+            continue
+        meta = dict(entry.meta)
+        target = meta.get('stripe-reclassifies') or source
+        if meta.get('stripe-invoice') and target.startswith(prefix):
+            ledger_claims.setdefault(meta['stripe-invoice'], set()).add(target[len(prefix):])
+        if meta.get('stripe-charge') and source.startswith(prefix):
+            ledger_sales.setdefault(meta['stripe-charge'], set()).add(source)
+    resolver = _Resolver(policy, bts, objects, ledger_claims=ledger_claims)
 
     def reclassification(source):
         """One entry that moves a held sale or refund out of the holding account once the evidence proves it.
@@ -1255,13 +1392,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         bt, normalized = validated[source]
         moved = reclassify_id(source)
         if (not held_entry(source) or source in pending or moved in posted or not policy['enabled']
-                or bt.get('type') not in _SALE_KINDS | _REFUND_KINDS or bt['currency'] != cur or source in owned):
-            return None
-        # The same authority a fresh posting needs: per-account accrual treatment and the ask-first limit,
-        # on the net and the gross amount. A move above the limit waits for a person, like a new row.
-        gross = {**normalized, 'amount': _amount(bt['amount'])}
-        if (needs_treatment(normalized) or needs_treatment(gross)
-                or queue.txn_is_above_ask_first(entity, normalized) or queue.txn_is_above_ask_first(entity, gross)):
+                or bt.get('type') not in _SALE_KINDS | _REFUND_KINDS or bt['currency'] != cur):
             return None
         entry = entries[source]
         expected = {(account_name, Decimal(_amount(amount)), book) for account_name, amount in resolver.holding(bt) if amount}
@@ -1272,6 +1403,17 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         except (ValueError, KeyError, TypeError, ArithmeticError):
             return None
         if review:
+            return None
+        # The evidence proves the movement. The move still needs the authority a fresh posting needs: no open
+        # review item, no per-account accrual treatment, and net and gross within the ask-first limit. A blocked
+        # move is reported (``reclassification_blocked``) and the entry stays in the holding account.
+        gross = {**normalized, 'amount': _amount(bt['amount'])}
+        blocked = ('existing_review' if source in owned else
+                   'accrual_treatment_required' if needs_treatment(normalized) or needs_treatment(gross) else
+                   'above_ask_first_amount' if queue.txn_is_above_ask_first(entity, normalized)
+                   or queue.txn_is_above_ask_first(entity, gross) else None)
+        if blocked:
+            result['reclassification_blocked'].append(dict(source_id=source, reason=blocked))
             return None
         lines = [(STRIPE_HOLDING_ACCOUNT, bt['amount'])] + [
             (name, amount) for name, amount in postings if name not in {policy['clearing_account'], policy['fee_account']}]
@@ -1287,37 +1429,105 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         action['source_digest'] = _digest({key: action[key] for key in ('source_id', 'reclassifies', 'date', 'postings')})
         reclassifications[source] = action
         return action
-    def release_refunds():
-        """A refund leaves the holding account (or skips it) only behind its sale, judged on the final batch.
+    def to_holding(action, reason):
+        """A fresh posting goes to the holding account instead; a move is withdrawn."""
+        source = action.get('reclassifies') or action['source_id']
+        if action['kind'] == 'reclassification':
+            result['actions'].remove(action)
+            result['reclassified'] = [row for row in result['reclassified'] if row['reclassification_id'] != action['source_id']]
+            return
+        bt = validated[source][0]
+        action.update(postings=[dict(account=name, amount=_amount(amount), currency=book)
+                                for name, amount in resolver.holding(bt) if amount],
+                      authority_id=STRIPE_HOLDING_AUTHORITY, review_reason=reason)
+        result['uncategorized'] = [row for row in result['uncategorized'] if row['source_id'] != source]
+        result['uncategorized'].append(dict(source_id=source, reason=reason))
 
-        Its sale must be linked by a verified movement, and must be out of the holding account through a live
-        ledger move or a move this batch accepted after every source check. Otherwise a refund posting goes to
-        the holding account with ``sale_in_holding`` and a refund move is withdrawn.
+    def claim_invoices():
+        """An invoice belongs to one charge in the batch too: every sale posting or move that would claim an
+        invoice that another one in this batch also claims goes to the holding account instead."""
+        claimants = {}
+        for action in result['actions']:
+            source = action.get('reclassifies') or action['source_id']
+            if source not in validated or action.get('review_reason') or validated[source][0].get('type') not in _SALE_KINDS:
+                continue
+            invoice = (resolver.links.get(validated[source][0]['id']) or {}).get('invoice')
+            if invoice:
+                claimants.setdefault(invoice, []).append(action)
+        for invoice, actions in sorted(claimants.items()):
+            if len(actions) > 1:
+                for action in actions:
+                    to_holding(action, 'invoice_claimed_by_another_payment')
+
+    def sale_release(bt, move):
+        """``None`` when the sale a refund or dispute follows is out of the holding account, else the reason.
+
+        Proof comes from the ledger (a live sale entry outside the holding account, or a live move of it) or
+        from this batch's final actions (an accepted move, or a fresh sale posted to revenue). A sale movement ID
+        that the ledger does not know, or that differs from the one recorded for the charge, proves nothing.
         """
+        link = resolver.links.get(bt['id']) or {}
+        linked, charge_id = link.get('sale'), link.get('charge')
+        if not linked:
+            return 'sale_movement_unverified'
+        sale = prefix + linked
+        if move:
+            recorded = dict(entries[prefix + bt['id']].meta).get('stripe-sale')
+            if recorded is not None and recorded != linked:
+                return 'sale_movement_unverified'
+        if charge_id and ledger_sales.get(charge_id, set()) - {sale}:
+            return 'sale_movement_unverified'
         final = {row['source_id'] for row in result['actions']}
+        if sale in posted and entries.get(sale) is not None:
+            meta = dict(entries[sale].meta)
+            if sale in reversed_ids or meta.get('stripe-charge') not in (None, charge_id):
+                return 'sale_movement_unverified'
+            if (meta.get('stripe-authority') == STRIPE_HOLDING_AUTHORITY and not moved_live(sale)
+                    and reclassify_id(sale) not in final):
+                return 'sale_in_holding'
+            return None
+        fresh = next((row for row in result['actions'] if row['source_id'] == sale), None)
+        if fresh is not None:
+            return 'sale_in_holding' if fresh.get('review_reason') else None
+        # Neither in the ledger nor posted in this batch (an earlier cutover, or a later page): a new refund
+        # posts as before, but a held refund needs proof before it moves.
+        return 'sale_movement_unverified' if move else None
+
+    def release_refunds():
+        """A refund leaves the holding account (or skips it) only behind its sale, judged on the final batch."""
         for action in list(result['actions']):
             source = action.get('reclassifies') or action['source_id']
-            if source not in validated or action.get('review_reason') or validated[source][0].get('type') not in _REFUND_KINDS:
+            if source not in validated:
                 continue
             bt = validated[source][0]
-            sale_bt = resolver.links.get(bt['id'])
-            sale = f"stripe:{account}:{sale_bt}" if sale_bt else None
-            if sale is None:
-                reason = 'sale_movement_unverified'
-            elif held_entry(sale) and not moved_live(sale) and reclassify_id(sale) not in final:
-                reason = 'sale_in_holding'
-            elif sale not in posted and any(row['source_id'] == sale and row.get('review_reason') for row in result['actions']):
-                reason = 'sale_in_holding'
-            else:
+            if bt.get('type') in _REFUND_KINDS and not action.get('review_reason'):
+                reason = sale_release(bt, action['kind'] == 'reclassification')
+                if reason:
+                    to_holding(action, reason)
+            elif action.get('review_reason') == 'dispute_requires_review' and sale_release(bt, False) == 'sale_in_holding':
+                to_holding(action, 'sale_in_holding')
+
+    def link_entries():
+        """Durable links for each final entry, written as entry metadata in the same transaction."""
+        for action in result['actions']:
+            source = action.get('reclassifies') or action['source_id']
+            if source not in validated:
                 continue
-            if action['kind'] == 'reclassification':
-                result['actions'].remove(action)
-                result['reclassified'] = [row for row in result['reclassified'] if row['reclassification_id'] != action['source_id']]
-            else:
-                action.update(postings=[dict(account=name, amount=_amount(amount), currency=book)
-                                        for name, amount in resolver.holding(bt) if amount],
-                              authority_id=STRIPE_HOLDING_AUTHORITY, review_reason=reason)
-                result['uncategorized'].append(dict(source_id=source, reason=reason))
+            bt = validated[source][0]
+            link = resolver.links.get(bt['id']) or {}
+            meta = {}
+            if bt.get('type') in _SALE_KINDS:
+                if action['kind'] != 'reclassification' and _ref_id(bt.get('source')):
+                    meta['stripe-charge'] = _ref_id(bt['source'])
+                if not action.get('review_reason') and link.get('invoice'):
+                    meta['stripe-invoice'] = link['invoice']
+            elif action['kind'] != 'reclassification' and _identity_movement(bt):
+                if link.get('charge'):
+                    meta['stripe-refund-of'] = link['charge']
+                if link.get('sale'):
+                    meta['stripe-sale'] = link['sale']
+            if meta:
+                result['entry_links'][action['source_id']] = sorted([key, value] for key, value in meta.items())
 
     for sid in selected:
         bt, normalized = validated[sid]
@@ -1456,7 +1666,9 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['actions'] = [row for row in result['actions'] if row['source_id'] != sid]
             result['uncategorized'] = [row for row in result['uncategorized'] if row['source_id'] != sid]
             result['unresolved'].append(dict(source_id=sid, reason=str(exc)))
+    claim_invoices()
     release_refunds()
+    link_entries()
     # Match bank arrivals separately: a payout may have posted to transit in a
     # previous cohort/month before its real bank deposit arrived.
     for sid in selected:
@@ -1485,6 +1697,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['actions'] = []  # Prior bank income must be corrected first.
             result['uncategorized'] = []
             result['reclassified'] = []
+            result['entry_links'] = {}
             result['unresolved'].append(dict(source_id=by_payout[payout]['bank_source_id'], reason=str(exc)))
             break
     missing = set(by_payout) - {_object_id(bt.get('source')) for bt in bts.values() if bt.get('type') == 'payout'}
@@ -1612,7 +1825,8 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
             meta=(('source-id', action['source_id']), ('import-session', session_id),
                   ('stripe-policy-digest', plan['policy_digest']), ('stripe-authority', action['authority_id']),
                   ('stripe-source-digest', action['source_digest']),
-                  *((('stripe-review', action['review_reason']),) if action.get('review_reason') else ())),
+                  *((('stripe-review', action['review_reason']),) if action.get('review_reason') else ()),
+                  *(tuple(pair) for pair in plan['entry_links'].get(action['source_id'], []))),
             postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
             for action in sourced]
         # A reclassification has no bank row of its own: its source ID is derived from the held movement, so the
@@ -1620,7 +1834,8 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
         moves = [Entry(date=date.fromisoformat(action['date']), narration=action['description'],
             meta=(('source-id', action['source_id']), ('import-session', session_id),
                   ('stripe-policy-digest', plan['policy_digest']), ('stripe-authority', action['authority_id']),
-                  ('stripe-source-digest', action['source_digest']), ('stripe-reclassifies', action['reclassifies'])),
+                  ('stripe-source-digest', action['source_digest']), ('stripe-reclassifies', action['reclassifies']),
+                  *(tuple(pair) for pair in plan['entry_links'].get(action['source_id'], []))),
             postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
             for action in plan['actions'] if action['kind'] == 'reclassification']
         if entries or moves:
@@ -1651,7 +1866,8 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
                     unresolved=[dict(row) for row in plan['unresolved']],
                     needs_review=[dict(row) for row in needs_review],
                     uncategorized=[dict(row) for row in plan['uncategorized']],
-                    reclassified=[dict(row) for row in plan['reclassified']])
+                    reclassified=[dict(row) for row in plan['reclassified']],
+                    reclassification_blocked=[dict(row) for row in plan['reclassification_blocked']])
 
 
 def stripe_dismiss_held(entity, source_id, *, note, session_id='stripe-dismiss', ts=None):
